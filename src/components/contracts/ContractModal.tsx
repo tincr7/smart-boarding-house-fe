@@ -4,16 +4,16 @@ import { useEffect, useState, useMemo } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { X, Loader2, UploadCloud, Calendar, MapPin, Home, User as UserIcon } from 'lucide-react';
-import { Contract, CreateContractDto } from '@/services/contract.api';
+import { X, Loader2, UploadCloud, Calendar, MapPin, Home, User as UserIcon, AlertTriangle } from 'lucide-react';
+import { Contract, CreateContractDto, contractApi } from '@/services/contract.api'; // Thêm contractApi
 import { uploadApi } from '@/services/upload.api';
 import { roomApi, Room } from '@/services/room.api';
 import { userApi, User } from '@/services/user.api';
-import { branchApi, Branch } from '@/services/branch.api'; // Import Branch API
+import { branchApi, Branch } from '@/services/branch.api';
 
 // Validate dữ liệu
 const contractSchema = z.object({
-  branchId: z.coerce.number().optional(), // Trường này chỉ để lọc UI, ko gửi API
+  branchId: z.coerce.number().optional(),
   roomId: z.coerce.number().min(1, 'Vui lòng chọn Phòng'),
   userId: z.coerce.number().min(1, 'Vui lòng chọn Khách thuê'),
   deposit: z.coerce.number().min(0, 'Tiền cọc phải là số dương'),
@@ -30,6 +30,11 @@ interface ContractModalProps {
   initialData?: Contract | null;
 }
 
+// Mở rộng interface User để lưu trạng thái thuê
+interface ExtendedUser extends User {
+  hasActiveContract?: boolean;
+}
+
 export default function ContractModal({ isOpen, onClose, onSubmit, initialData }: ContractModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scanImage, setScanImage] = useState<string | null>(null);
@@ -38,51 +43,60 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
   // Data States
   const [branches, setBranches] = useState<Branch[]>([]);
   const [allRooms, setAllRooms] = useState<Room[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<ExtendedUser[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
 
-  const { 
-    register, 
-    handleSubmit, 
-    reset, 
-    setValue, 
-    watch,
-    formState: { errors } 
-  } = useForm<ContractFormValues>({
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<ContractFormValues>({
     resolver: zodResolver(contractSchema) as any,
   });
 
-  // Theo dõi BranchId đang chọn để lọc phòng
   const selectedBranchId = watch('branchId');
+  const selectedUserId = watch('userId'); // Theo dõi để hiển thị cảnh báo
 
-  // Load tất cả dữ liệu cần thiết khi mở Modal
+  // Kiểm tra xem khách hàng đang chọn có đang thuê phòng khác không
+  const selectedUserStatus = useMemo(() => {
+    return users.find(u => u.id === Number(selectedUserId));
+  }, [selectedUserId, users]);
+
   useEffect(() => {
     if (isOpen) {
-      const fetchData = async () => {
-        setIsLoadingData(true);
-        try {
-          const [branchData, roomData, userData] = await Promise.all([
-            branchApi.getAll(),
-            roomApi.getAll(),
-            userApi.getAll()
-          ]);
-          setBranches(branchData);
-          setAllRooms(roomData);
-          const tenantsOnly = userData.filter(user => user.role !== 'ADMIN');
-          setUsers(tenantsOnly);
-        } catch (error) {
-          console.error("Lỗi tải dữ liệu:", error);
-        } finally {
-          setIsLoadingData(false);
-        }
-      };
+const fetchData = async () => {
+  setIsLoadingData(true);
+  try {
+    const [branchData, roomData, userData, contractData] = await Promise.all([
+      branchApi.getAll(),
+      roomApi.getAll(),
+      userApi.getAll(),
+      contractApi.getAll()
+    ]);
+
+    setBranches(branchData);
+    setAllRooms(roomData);
+
+    // CHỈ LỌC CÁC HỢP ĐỒNG ĐANG HOẠT ĐỘNG (ACTIVE)
+    // Loại bỏ 'UNPAID' vì đây là trạng thái của Hóa đơn, không phải Hợp đồng
+    const activeUserIds = contractData
+      .filter(c => c.status === 'ACTIVE') 
+      .map(c => c.userId);
+
+    const processedUsers = userData
+      .filter(user => user.role !== 'ADMIN')
+      .map(user => ({
+        ...user,
+        hasActiveContract: activeUserIds.includes(user.id)
+      }));
+    
+    setUsers(processedUsers);
+  } catch (error) {
+    console.error("Lỗi tải dữ liệu:", error);
+  } finally {
+    setIsLoadingData(false);
+  }
+};
       fetchData();
 
-      // Setup Form Data
       if (initialData) {
-        // Nếu là Edit: Cần set cả BranchId tương ứng với phòng đó
-        const currentRoom = initialData.room; // Giả sử API trả về chi tiết room trong contract
-        // Nếu API contract ko trả room.branchId, bạn có thể phải tìm trong list rooms
+        const currentRoom = initialData.room;
         setValue('branchId', currentRoom?.branchId || 0); 
         setValue('roomId', initialData.roomId);
         setValue('userId', initialData.userId);
@@ -98,19 +112,12 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
     }
   }, [isOpen, initialData, reset, setValue]);
 
-  // Logic lọc phòng: Theo Branch đã chọn + Status = AVAILABLE
   const filteredRooms = useMemo(() => {
     if (!selectedBranchId) return [];
-    
     return allRooms.filter(room => {
       const belongToBranch = room.branchId === Number(selectedBranchId);
-      
-      // Nếu đang Sửa hợp đồng: Phải hiện cả cái phòng hiện tại (dù nó đang OCCUPIED/RENTED)
       const isCurrentRoom = initialData && room.id === initialData.roomId;
-      
-      // Nếu Tạo mới: Chỉ hiện phòng AVAILABLE
       const isAvailable = room.status === 'AVAILABLE' || !room.status; 
-
       return belongToBranch && (isAvailable || isCurrentRoom);
     });
   }, [allRooms, selectedBranchId, initialData]);
@@ -123,55 +130,32 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
   };
 
   const onFormSubmit: SubmitHandler<ContractFormValues> = async (data) => {
+    // Cảnh báo xác nhận lần cuối nếu khách đang thuê
+    if (selectedUserStatus?.hasActiveContract && !initialData) {
+      const confirmAdd = confirm(`Khách hàng ${selectedUserStatus.fullName} đang có một hợp đồng thuê khác. Bạn có chắc chắn muốn tạo thêm hợp đồng cho phòng này không?`);
+      if (!confirmAdd) return;
+    }
+
     setIsSubmitting(true);
     try {
-      // 1. Lấy ảnh cũ (nếu đang sửa)
       let uploadedUrl = initialData?.scanImage || null;
-
-      // 2. Nếu có chọn file mới -> Upload
       if (selectedFile) {
-        console.log("1. Bắt đầu upload file:", selectedFile.name);
-        
         const res = await uploadApi.upload(selectedFile, 'contracts');
-        
-        console.log("2. Kết quả API Upload trả về:", res);
-
-        // --- SỬA LOGIC LẤY URL CHO CHẮC CHẮN ---
-        // Tùy vào Backend upload (Cloudinary, S3, hay Local), kết quả trả về khác nhau.
-        // Đoạn này sẽ kiểm tra tất cả các trường hợp phổ biến.
-        if (typeof res === 'string') {
-            uploadedUrl = res; // Trường hợp API trả về trực tiếp chuỗi URL
-        } else if (res?.secure_url) {
-            uploadedUrl = res.secure_url; // Cloudinary
-        } else if (res?.url) {
-            uploadedUrl = res.url; // Các service thông thường
-        } else if (res?.path) {
-            uploadedUrl = res.path; // Local upload
-        } else if (res?.data?.url) {
-            uploadedUrl = res.data.url; // Trường hợp bọc trong object data
-        }
-        
-        console.log("3. URL ảnh cuối cùng sẽ gửi đi:", uploadedUrl);
+        uploadedUrl = res.secure_url || res.url || res.path || (res.data && res.data.url) || res;
       }
 
-      // 3. Tạo Payload
       const payload = {
         startDate: new Date(data.startDate).toISOString(),
         endDate: new Date(data.endDate).toISOString(),
         deposit: Number(data.deposit),
         userId: Number(data.userId),
         roomId: Number(data.roomId),
-        
-        // Gửi URL ảnh (nếu ko có thì gửi null)
         scanImage: uploadedUrl || null
       };
-
-      console.log('4. Payload gửi lên API Create/Update:', payload);
 
       await onSubmit(payload);
       onClose();
     } catch (error: any) {
-      console.error("Lỗi:", error);
       const msg = error?.response?.data?.message || 'Lỗi xử lý';
       alert(Array.isArray(msg) ? msg.join('\n') : msg);
     } finally {
@@ -182,7 +166,7 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-slate-900">
       <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="px-6 py-4 border-b flex justify-between items-center bg-slate-50">
           <h2 className="text-xl font-bold text-slate-800">
@@ -197,60 +181,42 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
           ) : (
             <form id="contract-form" onSubmit={handleSubmit(onFormSubmit)} className="space-y-6">
               
-              {/* --- 1. CHỌN KHU TRỌ (BRANCH) TRƯỚC --- */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                   <MapPin size={16} /> Chọn Khu trọ / Chi nhánh
+                <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                   <MapPin size={16} /> Chi nhánh
                 </label>
-                <select 
-                  {...register('branchId')} 
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value="">-- Chọn chi nhánh trước --</option>
+                <select {...register('branchId')} className="w-full px-3 py-2 border rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                  <option value="">-- Chọn chi nhánh --</option>
                   {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name} - {b.address}</option>
+                    <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
                 </select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                {/* --- 2. CHỌN PHÒNG (ĐÃ LỌC) --- */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                    <Home size={16} /> Chọn Phòng
+                  <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                    <Home size={16} /> Phòng trống
                   </label>
-                  <select 
-                    {...register('roomId')} 
-                    disabled={!selectedBranchId} // Disable nếu chưa chọn chi nhánh
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-100 disabled:cursor-not-allowed"
-                  >
-                    <option value="">-- Chọn phòng trống --</option>
+                  <select {...register('roomId')} disabled={!selectedBranchId} className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-slate-100 outline-none">
+                    <option value="">-- Chọn phòng --</option>
                     {filteredRooms.map(room => (
-                        <option key={room.id} value={room.id}>
-                          {room.roomNumber} - {Number(room.price).toLocaleString()}đ
-                        </option>
+                        <option key={room.id} value={room.id}>{room.roomNumber} - {Number(room.price).toLocaleString()}đ</option>
                       ))
                     }
                   </select>
-                  {selectedBranchId && filteredRooms.length === 0 && (
-                    <p className="text-xs text-red-500 mt-1">Khu trọ này đã hết phòng trống!</p>
-                  )}
                   {errors.roomId && <p className="text-red-500 text-xs mt-1">{errors.roomId.message}</p>}
                 </div>
 
-                {/* --- 3. CHỌN KHÁCH --- */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
+                  <label className="block text-sm font-medium mb-1 flex items-center gap-1">
                     <UserIcon size={16} /> Khách thuê
                   </label>
-                  <select 
-                    {...register('userId')} 
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
-                  >
+                  <select {...register('userId')} className={`w-full px-3 py-2 border rounded-lg bg-white outline-none ${selectedUserStatus?.hasActiveContract ? 'border-amber-400 ring-1 ring-amber-100' : ''}`}>
                     <option value="">-- Chọn khách hàng --</option>
                     {users.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.fullName} ({user.phone})
+                      <option key={user.id} value={user.id} className={user.hasActiveContract ? "text-amber-600 font-medium" : "text-slate-900"}>
+                        {user.fullName} {user.hasActiveContract ? "(Đang thuê phòng khác)" : ""}
                       </option>
                     ))}
                   </select>
@@ -258,48 +224,46 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
                 </div>
               </div>
 
-              {/* Hàng 3: Thời gian */}
+              {/* HIỂN THỊ CẢNH BÁO TRỰC QUAN */}
+              {selectedUserStatus?.hasActiveContract && !initialData && (
+                <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2 animate-in fade-in slide-in-from-top-1">
+                  <AlertTriangle className="text-amber-500 shrink-0" size={18} />
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    <strong>Lưu ý:</strong> Khách hàng <b>{selectedUserStatus.fullName}</b> hiện đang có hợp đồng thuê tại hệ thống. Bạn vẫn có thể tạo thêm hợp đồng nếu khách thuê thêm phòng khác.
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Ngày bắt đầu</label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-2.5 text-slate-400" size={18} />
-                    <input type="date" {...register('startDate')} className="w-full pl-10 pr-3 py-2 border rounded-lg" />
-                  </div>
+                  <label className="block text-sm font-medium mb-1">Ngày bắt đầu</label>
+                  <input type="date" {...register('startDate')} className="w-full px-3 py-2 border rounded-lg" />
                   {errors.startDate && <p className="text-red-500 text-xs mt-1">{errors.startDate.message}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Ngày kết thúc</label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-2.5 text-slate-400" size={18} />
-                    <input type="date" {...register('endDate')} className="w-full pl-10 pr-3 py-2 border rounded-lg" />
-                  </div>
+                  <label className="block text-sm font-medium mb-1">Ngày kết thúc</label>
+                  <input type="date" {...register('endDate')} className="w-full px-3 py-2 border rounded-lg" />
                   {errors.endDate && <p className="text-red-500 text-xs mt-1">{errors.endDate.message}</p>}
                 </div>
               </div>
 
-              {/* Tiền cọc */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tiền đặt cọc (VNĐ)</label>
+                <label className="block text-sm font-medium mb-1">Tiền đặt cọc (VNĐ)</label>
                 <input type="number" {...register('deposit')} className="w-full px-3 py-2 border rounded-lg" placeholder="Nhập số tiền..." />
                 {errors.deposit && <p className="text-red-500 text-xs mt-1">{errors.deposit.message}</p>}
               </div>
 
-              {/* Upload ảnh */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Bản scan hợp đồng</label>
-                <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-50 relative cursor-pointer">
+                <label className="block text-sm font-medium mb-2">Bản scan hợp đồng</label>
+                <div className="border-2 border-dashed border-slate-300 rounded-xl p-4 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-50 relative cursor-pointer min-h-[150px]">
                   {scanImage ? (
-                     <div className="relative w-full h-48">
-                        <img src={scanImage} alt="Hợp đồng" className="w-full h-full object-contain" />
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 hover:opacity-100 transition-opacity rounded-lg">
-                          Thay đổi ảnh
-                        </div>
+                     <div className="relative w-full h-40">
+                        <img src={scanImage} alt="Scan" className="w-full h-full object-contain" />
                      </div>
                   ) : (
                     <>
-                      <UploadCloud size={32} className="mb-2" />
-                      <span className="text-sm">Bấm để tải ảnh lên</span>
+                      <UploadCloud size={24} className="mb-1" />
+                      <span className="text-xs">Tải ảnh lên</span>
                     </>
                   )}
                   <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
@@ -310,8 +274,8 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
         </div>
 
         <div className="p-4 border-t flex justify-end gap-3 bg-slate-50">
-          <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-medium">Hủy bỏ</button>
-          <button form="contract-form" type="submit" disabled={isSubmitting} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition-colors">Hủy bỏ</button>
+          <button form="contract-form" type="submit" disabled={isSubmitting} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 transition-all shadow-lg shadow-blue-100 disabled:opacity-50">
             {isSubmitting && <Loader2 className="animate-spin" size={18} />}
             {initialData ? 'Lưu thay đổi' : 'Tạo hợp đồng'}
           </button>

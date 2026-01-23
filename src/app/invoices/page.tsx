@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/shared/Sidebar';
 import InvoiceModal from '@/components/invoices/InvoiceModal';
 import { Invoice, invoiceApi } from '@/services/invoice.api';
-import { branchApi, Branch } from '@/services/branch.api'; // 1. IMPORT API CHI NHÁNH
-import { Loader2, Plus, Send, CheckCircle, Trash2, MapPin } from 'lucide-react'; // Thêm icon MapPin
+import { branchApi, Branch } from '@/services/branch.api';
+import { Loader2, Plus, Send, CheckCircle, Trash2, MapPin, MailCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { contractApi } from '@/services/contract.api';
 
@@ -14,44 +14,32 @@ export default function InvoicesPage() {
   const { user, isAdmin } = useAuth();
   const router = useRouter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  
-  // 2. STATE LƯU CHI NHÁNH
   const [branches, setBranches] = useState<Branch[]>([]); 
-  
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      // 3. GỌI SONG SONG 2 API
       const [invoicesData, branchesData] = await Promise.all([
         invoiceApi.getAll(),
         branchApi.getAll()
       ]);
+
+      // 1. LỌC DỮ LIỆU SẠCH (Ẩn các hóa đơn đã xóa mềm)
+      const activeInvoices = invoicesData.filter((inv: any) => !inv.deletedAt);
+
       if (isAdmin) {
-        setInvoices(invoicesData);
-     } else {
-        // LOGIC LỌC CHO TENANT
-        // 1. Lấy danh sách hợp đồng của user
-        // (Cách nhanh nhất là gọi api getProfile, user đã có mảng contracts nếu backend trả về, 
-        // hoặc gọi contractApi.getAll rồi filter như bước 5)
-        
-        // Giả sử ta lọc client-side từ list invoicesData:
-        // User chỉ xem được invoice nếu invoice đó thuộc phòng mà User đang có Hợp Đồng Active
-        // Tuy nhiên, đơn giản nhất là backend lọc. Nếu frontend lọc:
-        
-        // Cách tạm thời: Gọi thêm contract của user này
+        setInvoices(activeInvoices);
+      } else {
         const allContracts = await contractApi.getAll();
         const myActiveRoomIds = allContracts
            .filter(c => c.userId === user?.id && c.status === 'ACTIVE')
            .map(c => c.roomId);
 
-        const myInvoices = invoicesData.filter(inv => myActiveRoomIds.includes(inv.roomId));
+        const myInvoices = activeInvoices.filter(inv => myActiveRoomIds.includes(inv.roomId));
         setInvoices(myInvoices);
-     }
-      
-      setInvoices(invoicesData);
+      }
       setBranches(branchesData);
     } catch (error) { 
       console.error(error); 
@@ -62,15 +50,17 @@ export default function InvoicesPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // 4. HÀM TÌM TÊN CHI NHÁNH
   const getBranchName = (branchId: number) => {
     const branch = branches.find(b => b.id === branchId);
     return branch ? branch.name : '---';
   };
 
   const handleCreate = async (data: any) => {
-    await invoiceApi.create(data);
-    fetchData();
+    try {
+      await invoiceApi.create(data);
+      alert('Lập hóa đơn thành công! Hệ thống đang tự động gửi Email cho cư dân.');
+      fetchData();
+    } catch (error) { alert('Lỗi khi lập hóa đơn.'); }
   };
 
   const handleConfirmPayment = async (e: any, id: number) => {
@@ -81,18 +71,24 @@ export default function InvoicesPage() {
     }
   };
 
+  // 2. TÍCH HỢP GỬI THÔNG BÁO THẬT QUA MAIL
   const handleSendNotification = async (e: any, id: number) => {
     e.stopPropagation();
-    alert('Đang gửi thông báo đến cư dân...');
-    await invoiceApi.sendNotification(id);
-    alert('Đã gửi thông báo thành công!');
+    try {
+      await invoiceApi.sendNotification(id);
+      alert('Đã gửi mail nhắc nợ thành công đến cư dân!');
+    } catch (error) { alert('Gửi mail thất bại. Vui lòng kiểm tra lại cấu hình SMTP.'); }
   };
 
+  // 3. XỬ LÝ XÓA MỀM (Soft Delete)
   const handleDelete = async (e: any, id: number) => {
     e.stopPropagation();
-    if(confirm('Bạn có chắc muốn xóa hóa đơn này không?')) {
-       await invoiceApi.delete(id);
-       fetchData();
+    if(confirm('Bạn có chắc muốn đưa hóa đơn này vào kho lưu trữ? (Dùng khi nhập sai số điện/nước)')) {
+       try {
+         await invoiceApi.delete(id);
+         setInvoices(prev => prev.filter(inv => inv.id !== id)); // UI cập nhật ngay lập tức
+         alert('Đã chuyển hóa đơn vào mục lưu trữ.');
+       } catch (error) { alert('Không thể xóa hóa đơn này.'); }
     }
   };
 
@@ -100,95 +96,91 @@ export default function InvoicesPage() {
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar />
       <main className="flex-1 ml-64 p-8">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-slate-900">Danh sách Hóa đơn</h1>
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter">Hóa đơn & Tiền điện nước</h1>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1 italic">
+              Đại học Thủy Lợi - Quản lý trọ thông minh
+            </p>
+          </div>
           {isAdmin && (
-          <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200">
-            <Plus size={20} /> Lập hóa đơn mới
-          </button>
+            <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2">
+              <Plus size={20} /> Lập hóa đơn mới
+            </button>
           )}
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
           <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-semibold">
+            <thead className="bg-slate-50/50 text-slate-400 text-[10px] uppercase font-black tracking-[0.2em] border-b">
               <tr>
-                {/* 5. THÊM CỘT CHI NHÁNH */}
-                <th className="px-4 py-4">Chi nhánh</th>
-                <th className="px-4 py-4">Phòng</th>
-                <th className="px-4 py-4">Tháng/Năm</th>
-                <th className="px-4 py-4">Điện (Số)</th>
-                <th className="px-4 py-4">Nước (Khối)</th>
-                <th className="px-4 py-4 text-right">Tổng tiền</th>
-                <th className="px-4 py-4 text-center">Trạng thái</th>
-                <th className="px-4 py-4 text-center">Hành động</th>
+                <th className="px-6 py-5">Khu vực / Phòng</th>
+                <th className="px-6 py-5">Tháng/Năm</th>
+                <th className="px-6 py-5">Chỉ số Điện</th>
+                <th className="px-6 py-5">Chỉ số Nước</th>
+                <th className="px-6 py-5 text-right">Tổng thanh toán</th>
+                <th className="px-6 py-5 text-center">Trạng thái</th>
+                <th className="px-6 py-5 text-center">Hành động</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 font-bold">
               {loading ? (
-                <tr><td colSpan={8} className="text-center py-10"><Loader2 className="animate-spin mx-auto text-blue-600" /></td></tr>
+                <tr><td colSpan={8} className="text-center py-20"><Loader2 className="animate-spin mx-auto text-blue-600" size={32} /></td></tr>
               ) : invoices.map((inv) => (
-                <tr 
-                  key={inv.id} 
-                  onClick={() => router.push(`/invoices/${inv.id}`)}
-                  className="hover:bg-slate-50 cursor-pointer transition-colors"
-                >
-                  {/* 6. HIỂN THỊ TÊN CHI NHÁNH */}
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-1.5 text-slate-700 text-sm">
-                        <MapPin size={14} className="text-slate-400 shrink-0" />
-                        <span className="font-medium truncate max-w-[150px]" title={getBranchName(inv.room?.branchId)}>
-                          {getBranchName(inv.room?.branchId)}
-                        </span>
-                    </div>
-                  </td>
-
-                  <td className="px-4 py-4 font-bold text-slate-900">{inv.room?.roomNumber}</td>
-                  <td className="px-4 py-4 text-slate-600">Tháng {inv.month}/{inv.year}</td>
-                  <td className="px-4 py-4 text-sm">
+                <tr key={inv.id} onClick={() => router.push(`/invoices/${inv.id}`)} className="hover:bg-blue-50/30 cursor-pointer transition-colors group">
+                  <td className="px-6 py-5">
                     <div className="flex flex-col">
-                       <span className="text-slate-900 font-medium">{inv.newElectricity - inv.oldElectricity} tiêu thụ</span>
-                       <span className="text-xs text-slate-400">({inv.oldElectricity} - {inv.newElectricity})</span>
+                      <span className="text-[10px] text-slate-400 flex items-center gap-1 uppercase">
+                        <MapPin size={10} className="text-blue-500" /> {getBranchName(inv.room?.branchId)}
+                      </span>
+                      <span className="text-lg font-black text-slate-800">PHÒNG {inv.room?.roomNumber}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-sm">
+                  <td className="px-6 py-5 text-slate-600 text-xs uppercase tracking-tight">Tháng {inv.month}/{inv.year}</td>
+                  <td className="px-6 py-5">
                     <div className="flex flex-col">
-                       <span className="text-slate-900 font-medium">{inv.newWater - inv.oldWater} tiêu thụ</span>
-                       <span className="text-xs text-slate-400">({inv.oldWater} - {inv.newWater})</span>
+                       <span className="text-blue-600 text-sm font-black">{inv.newElectricity - inv.oldElectricity} kWh</span>
+                       <span className="text-[10px] text-slate-300 italic">{inv.oldElectricity} → {inv.newElectricity}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-right font-bold text-blue-600">
-                    {Number(inv.totalAmount).toLocaleString()} đ
+                  <td className="px-6 py-5">
+                    <div className="flex flex-col">
+                       <span className="text-cyan-600 text-sm font-black">{inv.newWater - inv.oldWater} m³</span>
+                       <span className="text-[10px] text-slate-300 italic">{inv.oldWater} → {inv.newWater}</span>
+                    </div>
                   </td>
-                  <td className="px-4 py-4 text-center">
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                  <td className="px-6 py-5 text-right text-xl font-black text-slate-900 tracking-tighter">
+                    {Number(inv.totalAmount).toLocaleString()} <span className="text-xs text-slate-400 font-bold">đ</span>
+                  </td>
+                  <td className="px-6 py-5 text-center">
+                    <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm border ${
                       inv.status === 'PAID' 
-                      ? 'bg-green-100 text-green-700 border-green-200' 
-                      : 'bg-red-50 text-red-600 border-red-200'
+                      ? 'bg-green-500 text-white border-green-400' 
+                      : 'bg-red-500 text-white border-red-400'
                     }`}>
-                      {inv.status === 'PAID' ? 'Đã thu tiền' : 'Chưa thanh toán'}
+                      {inv.status === 'PAID' ? 'Đã thu' : 'Nợ phí'}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-center">
+                  <td className="px-6 py-5 text-center">
                     {isAdmin ? (
-                    <div className="flex items-center justify-center gap-2">
-                       {inv.status !== 'PAID' && (
-                          <>
-                            <button onClick={(e) => handleSendNotification(e, inv.id)} className="p-2 text-blue-500 hover:bg-blue-50 rounded" title="Gửi thông báo">
-                               <Send size={16} />
-                            </button>
-                            <button onClick={(e) => handleConfirmPayment(e, inv.id)} className="p-2 text-green-600 hover:bg-green-50 rounded" title="Xác nhận thu tiền">
-                               <CheckCircle size={16} />
-                            </button>
-                          </>
-                       )}
-                       <button onClick={(e) => handleDelete(e, inv.id)} className="p-2 text-red-400 hover:bg-red-50 rounded" title="Xóa">
-                          <Trash2 size={16} />
-                       </button>
-                    </div>
-                    ):(
-                      <span className="text-xs text-slate-400">---</span>
-                      )}
+                      <div className="flex items-center justify-center gap-2">
+                         {inv.status !== 'PAID' && (
+                            <>
+                              <button onClick={(e) => handleSendNotification(e, inv.id)} className="p-2.5 text-blue-500 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm border border-blue-50" title="Gửi Mail Nhắc Nợ">
+                                 <Send size={16} />
+                              </button>
+                              <button onClick={(e) => handleConfirmPayment(e, inv.id)} className="p-2.5 text-green-600 hover:bg-green-600 hover:text-white rounded-xl transition-all shadow-sm border border-green-50" title="Xác nhận Thu Tiền">
+                                 <CheckCircle size={16} />
+                              </button>
+                            </>
+                         )}
+                         <button onClick={(e) => handleDelete(e, inv.id)} className="p-2.5 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-transparent" title="Xóa mềm">
+                            <Trash2 size={16} />
+                         </button>
+                      </div>
+                    ) : (
+                      <span className="text-slate-200">---</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -197,11 +189,7 @@ export default function InvoicesPage() {
         </div>
       </main>
 
-      <InvoiceModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onSubmit={handleCreate} 
-      />
+      <InvoiceModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleCreate} />
     </div>
   );
 }

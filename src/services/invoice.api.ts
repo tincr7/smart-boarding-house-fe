@@ -25,13 +25,15 @@ export interface Invoice {
   paymentProof?: string;
   roomId: number;
   createdAt: string;
+  // THÊM TRƯỜNG NÀY ĐỂ HẾT LỖI TYPESCRIPT KHI FILTER XÓA MỀM
+  deletedAt?: string | Date | null; 
   room: {
     id: number;
     roomNumber: string;
     price: string | number;
     status: string;
     branchId: number;
-    contracts?: any[]; // Để lấy thông tin khách nếu cần
+    contracts?: any[]; 
   };
 }
 
@@ -48,6 +50,7 @@ export interface CreateInvoiceDto {
 }
 
 export const invoiceApi = {
+  // 1. Lấy danh sách (Backend đã filter xóa mềm, nhưng FE nên có interface chuẩn)
   getAll: async () => {
     const response = await axiosInstance.get<Invoice[]>('/invoices');
     return response.data;
@@ -68,22 +71,40 @@ export const invoiceApi = {
     return response.data;
   },
 
-  // API xác nhận đã thu tiền (Cập nhật status = PAID)
   confirmPayment: async (id: number) => {
     const response = await axiosInstance.patch(`/invoices/${id}`, { status: 'PAID' });
     return response.data;
   },
 
-  // API gửi thông báo (Giả lập hoặc gọi endpoint thật nếu có)
+  // 2. Tích hợp endpoint gửi Mail thật từ Backend
   sendNotification: async (id: number) => {
-    // Ví dụ: POST /invoices/1/notify
-    // const response = await axiosInstance.post(`/invoices/${id}/notify`);
-    // return response.data;
-    return new Promise((resolve) => setTimeout(resolve, 1000)); // Giả lập
+    // Giang nên gọi endpoint thật để Mailer ở Backend hoạt động
+    const response = await axiosInstance.post(`/invoices/${id}/send-mail`);
+    return response.data;
   },
 
+  // 3. Xóa mềm (Soft Delete)
   delete: async (id: number) => {
     const response = await axiosInstance.delete(`/invoices/${id}`);
     return response.data;
-  }
+  },
+
+  getLatestByRoom: async (roomId: number) => {
+    const response = await axiosInstance.get(`/invoices/latest/${roomId}`);
+    return response.data; 
+  },
+  getDeleted: async () => {
+    const response = await axiosInstance.get<Invoice[]>('/invoices/deleted');
+    return response.data;
+  },
+
+  restore: async (id: number) => {
+    const response = await axiosInstance.patch(`/invoices/${id}/restore`);
+    return response.data;
+  },
+
+  hardDelete: async (id: number) => {
+    const response = await axiosInstance.delete(`/invoices/${id}/permanent`);
+    return response.data;
+  },
 };

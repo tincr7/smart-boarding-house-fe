@@ -1,8 +1,8 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
-// Cập nhật đúng URL Backend của bạn (Render)
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://smart-rental-be.onrender.com';
+// Tự động nhận diện môi trường: Nếu chạy local thì dùng localhost, nếu deploy thì dùng Render
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 const axiosInstance = axios.create({
   baseURL: API_URL,
@@ -11,7 +11,7 @@ const axiosInstance = axios.create({
   },
 });
 
-// Interceptor: Tự động gắn Token vào mọi request
+// Interceptor: Gắn Token vào Header cho MỌI request
 axiosInstance.interceptors.request.use((config) => {
   const token = Cookies.get('access_token');
   if (token) {
@@ -21,25 +21,19 @@ axiosInstance.interceptors.request.use((config) => {
 });
 
 // --- TYPE DEFINITIONS ---
-export interface RegisterRequest {
-  email: string;
-  password: string;
-  fullName: string;
-  phone?: string;
-  identityCard?: string;
-}
-
 export interface LoginRequest {
   email: string;
   password: string;
 }
 
 export interface AuthResponse {
-  access_token: string; // Backend trả về key này
+  accessToken: string; // Khớp với NestJS thường dùng
+  access_token?: string; // Dự phòng cho bản cũ
   user?: {
-    id: string;
+    id: number;
     email: string;
     fullName: string;
+    role: string;
   };
 }
 
@@ -47,45 +41,44 @@ export interface AuthResponse {
 export const authApi = {
   // 1. Đăng nhập & LƯU TOKEN
   login: async (data: LoginRequest) => {
-    const response = await axiosInstance.post<AuthResponse>('/auth/login', data);
-    
-    // --- ĐÂY LÀ PHẦN QUAN TRỌNG BẠN CÒN THIẾU ---
-    // Kiểm tra và lấy token từ response
-    const token = response.data.access_token || (response.data as any).accessToken;
+    try {
+      const response = await axiosInstance.post<AuthResponse>('/auth/login', data);
+      
+      // Kiểm tra cả 2 trường hợp tên biến để không bị sót
+      const token = response.data.accessToken || response.data.access_token;
 
-    if (token) {
-      // Lưu token vào Cookie (quan trọng: path '/')
-      Cookies.set('access_token', token, { expires: 7, path: '/' });
-      console.log("✅ Đã lưu token vào Cookie:", token);
-    } else {
-      console.error("❌ API trả về thành công nhưng không thấy access_token:", response.data);
+      if (token) {
+        // Lưu token vào Cookie dùng chung cho toàn bộ domain (path: '/')
+        Cookies.set('access_token', token, { 
+            expires: 7, 
+            path: '/',
+            sameSite: 'lax' // Giúp bảo mật hơn
+        });
+        
+        // Cập nhật ngay lập tức cho instance hiện tại để các request sau (như getProfile) chạy được luôn
+        axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        
+        console.log("✅ Đăng nhập thành công, đã lưu token.");
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error("❌ Lỗi đăng nhập:", error);
+      throw error;
     }
-    // ---------------------------------------------
-
-    return response.data;
   },
 
-  // 2. Đăng ký
-  register: async (data: RegisterRequest) => {
-    const response = await axiosInstance.post('/auth/register', data);
-    return response.data;
-  },
-  
-  // 3. Logout
+  // 2. Logout
   logout: () => {
     Cookies.remove('access_token', { path: '/' });
-    // Reload trang hoặc redirect về login để xóa sạch state cũ
+    delete axiosInstance.defaults.headers.common['Authorization'];
     if (typeof window !== 'undefined') {
         window.location.href = '/login';
     }
   },
 
-  getToken: () => {
-    return Cookies.get('access_token');
-  },
-
-  // 4. Lấy Profile (Lúc này Token đã có trong Cookie nhờ hàm login ở trên)
   getProfile: async () => {
+    // Không cần truyền token thủ công, Interceptor đã lo
     const response = await axiosInstance.get('/auth/me'); 
     return response.data;
   },

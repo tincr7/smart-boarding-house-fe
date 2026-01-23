@@ -56,5 +56,19 @@ export const branchApi = {
   delete: async (id: number) => {
     const response = await axiosInstance.delete(`/branches/${id}`);
     return response.data;
-  }
+  },
+  getDeleted: async () => {
+    const response = await axiosInstance.get<Branch[]>('/branches/deleted');
+    return response.data;
+  },
+
+  restore: async (id: number) => {
+    const response = await axiosInstance.patch(`/branches/${id}/restore`);
+    return response.data;
+  },
+
+  hardDelete: async (id: number) => {
+    const response = await axiosInstance.delete(`/branches/${id}/permanent`);
+    return response.data;
+  },
 };

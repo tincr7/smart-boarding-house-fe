@@ -20,6 +20,7 @@ export interface Room {
   status?: 'AVAILABLE' | 'RENTED' | 'OCCUPIED';
   branchId: number;
   description?: string;
+  deletedAt?: string | Date | null;
 }
 
 // DTO cho tạo mới
@@ -55,5 +56,21 @@ export const roomApi = {
   
   delete: async (id: number) => {
     return await axiosInstance.delete(`/rooms/${id}`);
+  },
+  getDeleted: async () => {
+    const response = await axiosInstance.get<Room[]>('/rooms/deleted');
+    return response.data;
+  },
+
+  // Khôi phục phòng
+  restore: async (id: number) => {
+    const response = await axiosInstance.patch(`/rooms/${id}/restore`);
+    return response.data;
+  },
+
+  // Xóa vĩnh viễn phòng khỏi DB
+  hardDelete: async (id: number) => {
+    const response = await axiosInstance.delete(`/rooms/${id}/permanent`);
+    return response.data;
   }
 };

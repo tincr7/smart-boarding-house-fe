@@ -4,31 +4,31 @@ import { useEffect, useState, useMemo } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { X, Loader2, UploadCloud, Calculator, MapPin, Home } from 'lucide-react';
-import { Invoice, CreateInvoiceDto } from '@/services/invoice.api';
+import { X, Loader2, UploadCloud, Calculator, MapPin, Home, AlertCircle } from 'lucide-react';
+import { Invoice, CreateInvoiceDto, invoiceApi } from '@/services/invoice.api'; // Thêm invoiceApi để lấy chỉ số cũ
 import { roomApi, Room } from '@/services/room.api';
 import { uploadApi } from '@/services/upload.api';
-import { branchApi, Branch } from '@/services/branch.api'; // 1. IMPORT API CHI NHÁNH
+import { branchApi, Branch } from '@/services/branch.api';
 
 const PRICE_ELEC = 3500;
 const PRICE_WATER = 15000;
 
-// Schema Validation
+// 1. Schema Validation: Chặn số âm và logic chỉ số lùi
 const invoiceSchema = z.object({
-  branchId: z.coerce.number().optional(), // Thêm trường này để phục vụ UI (không bắt buộc gửi API)
+  branchId: z.coerce.number().optional(), 
   roomId: z.coerce.number().min(1, 'Vui lòng chọn Phòng'),
   month: z.coerce.number().min(1).max(12),
   year: z.coerce.number().min(2020),
-  oldElectricity: z.coerce.number().min(0),
-  newElectricity: z.coerce.number().min(0),
-  oldWater: z.coerce.number().min(0),
-  newWater: z.coerce.number().min(0),
-  serviceFee: z.coerce.number().min(0),
+  oldElectricity: z.coerce.number().min(0, 'Không được là số âm'),
+  newElectricity: z.coerce.number().min(0, 'Không được là số âm'),
+  oldWater: z.coerce.number().min(0, 'Không được là số âm'),
+  newWater: z.coerce.number().min(0, 'Không được là số âm'),
+  serviceFee: z.coerce.number().min(0, 'Không được là số âm'),
 }).refine((data) => data.newElectricity >= data.oldElectricity, {
-  message: "Số mới phải >= số cũ",
+  message: "Chỉ số điện mới không được nhỏ hơn chỉ số cũ!",
   path: ["newElectricity"],
 }).refine((data) => data.newWater >= data.oldWater, {
-  message: "Số mới phải >= số cũ",
+  message: "Chỉ số nước mới không được nhỏ hơn chỉ số cũ!",
   path: ["newWater"],
 });
 
@@ -44,19 +44,12 @@ interface InvoiceModalProps {
 export default function InvoiceModal({ isOpen, onClose, onSubmit, initialData }: InvoiceModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]); // 2. STATE LƯU CHI NHÁNH
+  const [branches, setBranches] = useState<Branch[]>([]); 
   const [paymentProof, setPaymentProof] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [estimatedTotal, setEstimatedTotal] = useState(0);
 
-  const { 
-    register, 
-    handleSubmit, 
-    watch, 
-    reset, 
-    setValue, 
-    formState: { errors } 
-  } = useForm<InvoiceFormValues>({
+  const { register, handleSubmit, watch, reset, setValue, formState: { errors } } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceSchema) as any, 
     defaultValues: {
       month: new Date().getMonth() + 1,
@@ -68,27 +61,21 @@ export default function InvoiceModal({ isOpen, onClose, onSubmit, initialData }:
   });
 
   const watchAllFields = watch();
-  const selectedBranchId = watch('branchId'); // Theo dõi chi nhánh đang chọn
+  const selectedBranchId = watch('branchId');
+  const selectedRoomId = watch('roomId'); // Theo dõi để Auto-fill
 
+  // 2. Tải dữ liệu ban đầu (Chi nhánh & Phòng)
   useEffect(() => {
     if (isOpen) {
       const fetchData = async () => {
         try {
-          // 3. GỌI SONG SONG ROOM VÀ BRANCH
-          const [allRooms, allBranches] = await Promise.all([
-             roomApi.getAll(),
-             branchApi.getAll()
-          ]);
-          
+          const [allRooms, allBranches] = await Promise.all([roomApi.getAll(), branchApi.getAll()]);
           setRooms(allRooms);
           setBranches(allBranches);
 
-          // Nếu đang Sửa (Edit mode)
           if (initialData) {
-            // Tìm branchId của phòng hiện tại để set default
             const currentRoom = allRooms.find(r => r.id === initialData.roomId);
             if (currentRoom) setValue('branchId', currentRoom.branchId);
-
             setValue('roomId', initialData.roomId);
             setValue('month', initialData.month);
             setValue('year', initialData.year);
@@ -104,37 +91,48 @@ export default function InvoiceModal({ isOpen, onClose, onSubmit, initialData }:
           }
         } catch (error) { console.error(error); }
       };
-      
       fetchData();
       setSelectedFile(null);
     }
   }, [isOpen, initialData, reset, setValue]);
 
-  // 4. LOGIC LỌC PHÒNG THEO CHI NHÁNH
+  // 3. LOGIC AUTO-FILL CHỈ SỐ CŨ KHI CHỌN PHÒNG
+  useEffect(() => {
+    const fetchLatestIndexes = async () => {
+      if (selectedRoomId && !initialData) {
+        try {
+          const res = await invoiceApi.getLatestByRoom(Number(selectedRoomId));
+          if (res) {
+            setValue('oldElectricity', res.newElectricity);
+            setValue('oldWater', res.newWater);
+            setValue('newElectricity', res.newElectricity); // Mặc định số mới = số cũ
+            setValue('newWater', res.newWater);
+          }
+        } catch (error) { console.log("Phòng mới hoặc chưa có dữ liệu cũ."); }
+      }
+    };
+    fetchLatestIndexes();
+  }, [selectedRoomId, initialData, setValue]);
+
+  // 4. Logic lọc phòng theo chi nhánh (Giữ nguyên logic của Giang)
   const filteredRooms = useMemo(() => {
-    // Chỉ lấy phòng có người ở (OCCUPIED hoặc RENTED)
     const occupiedRooms = rooms.filter(r => r.status === 'OCCUPIED' || r.status === 'RENTED');
-
-    // Nếu chưa chọn chi nhánh -> Trả về rỗng (bắt buộc chọn chi nhánh trước)
     if (!selectedBranchId) return [];
-
-    // Lọc theo branchId
     return occupiedRooms.filter(r => r.branchId === Number(selectedBranchId));
   }, [rooms, selectedBranchId]);
 
-
-  // Tính tiền tự động
+  // 5. Tính tiền tự động và hiển thị cảnh báo lỗi logic
   useEffect(() => {
     const { roomId, oldElectricity, newElectricity, oldWater, newWater, serviceFee } = watchAllFields;
-    
+    if (newElectricity < oldElectricity || newWater < oldWater) {
+      setEstimatedTotal(-1); // Trạng thái lỗi
+      return;
+    }
     const selectedRoom = rooms.find(r => r.id === Number(roomId));
     const roomPrice = selectedRoom ? Number(selectedRoom.price) : 0;
-
     const elecCost = (Number(newElectricity || 0) - Number(oldElectricity || 0)) * PRICE_ELEC;
     const waterCost = (Number(newWater || 0) - Number(oldWater || 0)) * PRICE_WATER;
-    const total = roomPrice + Math.max(0, elecCost) + Math.max(0, waterCost) + Number(serviceFee || 0);
-    
-    setEstimatedTotal(total);
+    setEstimatedTotal(roomPrice + elecCost + waterCost + Number(serviceFee || 0));
   }, [watchAllFields, rooms]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,132 +150,98 @@ export default function InvoiceModal({ isOpen, onClose, onSubmit, initialData }:
         const res = await uploadApi.upload(selectedFile, 'invoices');
         uploadedUrl = res.url || res.secure_url || res.path;
       }
-
-      // Loại bỏ branchId ra khỏi payload gửi đi (vì backend không cần)
       const { branchId, ...restData } = data;
-
-      const payload: CreateInvoiceDto = {
-        ...restData,
-        paymentProof: uploadedUrl,
-      };
-      await onSubmit(payload);
+      await onSubmit({ ...restData, paymentProof: uploadedUrl });
       onClose();
-    } catch (error) {
-      alert('Lỗi khi lưu hóa đơn');
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch (error) { alert('Lỗi khi lưu hóa đơn'); } 
+    finally { setIsSubmitting(false); }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (['-', 'e', 'E', '+'].includes(e.key)) e.preventDefault();
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 text-slate-900">
       <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="px-6 py-4 border-b flex justify-between items-center bg-slate-50">
-          <h2 className="text-xl font-bold text-slate-800">
-            {initialData ? 'Sửa hóa đơn' : 'Lập hóa đơn tiền phòng'}
-          </h2>
+          <h2 className="text-xl font-bold text-slate-800">{initialData ? 'Sửa hóa đơn' : 'Lập hóa đơn tiền phòng'}</h2>
           <button onClick={onClose}><X size={24} className="text-slate-400 hover:text-red-500" /></button>
         </div>
 
         <div className="p-6 overflow-y-auto">
           <form id="invoice-form" onSubmit={handleSubmit(onFormSubmit)} className="space-y-6">
             
-            {/* 5. UI: CHỌN CHI NHÁNH & PHÒNG */}
             <div className="grid grid-cols-2 gap-4">
-              {/* Dropdown Chi nhánh */}
-              <div className="col-span-1">
-                <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                  <MapPin size={14} /> Khu trọ / Chi nhánh
-                </label>
-                <select 
-                  {...register('branchId')} 
-                  className="w-full px-3 py-2 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500"
-                >
+              <div>
+                <label className="block text-sm font-medium mb-1 flex items-center gap-1"><MapPin size={14}/> Chi nhánh</label>
+                <select {...register('branchId')} className="w-full px-3 py-2 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">-- Chọn chi nhánh --</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
-
-              {/* Dropdown Phòng (Đã lọc) */}
-              <div className="col-span-1">
-                <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                   <Home size={14} /> Phòng thuê
-                </label>
-                <select 
-                  {...register('roomId')} 
-                  disabled={!selectedBranchId} // Disable nếu chưa chọn chi nhánh
-                  className="w-full px-3 py-2 border rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
-                >
+              <div>
+                <label className="block text-sm font-medium mb-1 flex items-center gap-1"><Home size={14}/> Phòng thuê</label>
+                <select {...register('roomId')} disabled={!selectedBranchId} className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-slate-100 outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">-- Chọn phòng --</option>
-                  {filteredRooms.map(r => (
-                    <option key={r.id} value={r.id}>{r.roomNumber} - {Number(r.price).toLocaleString()}đ</option>
-                  ))}
+                  {filteredRooms.map(r => <option key={r.id} value={r.id}>{r.roomNumber}</option>)}
                 </select>
-                {selectedBranchId && filteredRooms.length === 0 && (
-                   <p className="text-xs text-red-500 mt-1">Khu này chưa có phòng nào đang thuê.</p>
-                )}
                 {errors.roomId && <p className="text-red-500 text-xs mt-1">{errors.roomId.message}</p>}
               </div>
             </div>
 
-            {/* Hàng: Thời gian */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tháng</label>
                 <input type="number" {...register('month')} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
-                {errors.month && <p className="text-red-500 text-xs mt-1">{errors.month.message}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Năm</label>
                 <input type="number" {...register('year')} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
-                {errors.year && <p className="text-red-500 text-xs mt-1">{errors.year.message}</p>}
               </div>
             </div>
 
-            {/* Hàng: Điện */}
+            {/* Chỉ số Điện - Tự động điền và Chặn lỗi */}
             <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100">
-               <h3 className="font-bold text-yellow-700 text-sm mb-2 flex items-center gap-2">⚡ Chỉ số Điện ({PRICE_ELEC.toLocaleString()}đ/kwh)</h3>
+               <h3 className="font-bold text-yellow-700 text-sm mb-2 flex items-center gap-2">⚡ Chỉ số Điện ({PRICE_ELEC.toLocaleString()}đ)</h3>
                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs text-slate-500">Chỉ số cũ</label>
-                    <input type="number" {...register('oldElectricity')} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-yellow-500" />
+                    <label className="text-xs text-slate-500 italic font-medium">Chỉ số cũ</label>
+                    <input type="number" min="0" onKeyDown={handleKeyDown} {...register('oldElectricity')} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-yellow-500" />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-500">Chỉ số mới</label>
-                    <input type="number" {...register('newElectricity')} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-yellow-500" />
-                    {errors.newElectricity && <p className="text-red-500 text-xs mt-1">{errors.newElectricity.message}</p>}
+                    <label className="text-xs text-slate-500 italic font-bold">Chỉ số mới</label>
+                    <input type="number" min="0" onKeyDown={handleKeyDown} {...register('newElectricity')} className={`w-full px-3 py-2 border rounded-lg outline-none transition-all ${errors.newElectricity ? 'border-red-500 ring-1 ring-red-500' : 'focus:ring-2 focus:ring-yellow-500'}`} />
+                    {errors.newElectricity && <p className="text-red-500 text-[10px] mt-1 italic font-bold">⚠️ {errors.newElectricity.message}</p>}
                   </div>
                </div>
             </div>
 
-            {/* Hàng: Nước */}
+            {/* Chỉ số Nước - Tự động điền và Chặn lỗi */}
             <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-               <h3 className="font-bold text-blue-700 text-sm mb-2 flex items-center gap-2">💧 Chỉ số Nước ({PRICE_WATER.toLocaleString()}đ/m3)</h3>
+               <h3 className="font-bold text-blue-700 text-sm mb-2 flex items-center gap-2">💧 Chỉ số Nước ({PRICE_WATER.toLocaleString()}đ)</h3>
                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs text-slate-500">Chỉ số cũ</label>
-                    <input type="number" {...register('oldWater')} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                    <label className="text-xs text-slate-500 italic font-medium">Chỉ số cũ</label>
+                    <input type="number" min="0" onKeyDown={handleKeyDown} {...register('oldWater')} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="text-xs text-slate-500">Chỉ số mới</label>
-                    <input type="number" {...register('newWater')} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
-                    {errors.newWater && <p className="text-red-500 text-xs mt-1">{errors.newWater.message}</p>}
+                    <label className="text-xs text-slate-500 italic font-bold">Chỉ số mới</label>
+                    <input type="number" min="0" onKeyDown={handleKeyDown} {...register('newWater')} className={`w-full px-3 py-2 border rounded-lg outline-none transition-all ${errors.newWater ? 'border-red-500 ring-1 ring-red-500' : 'focus:ring-2 focus:ring-blue-500'}`} />
+                    {errors.newWater && <p className="text-red-500 text-[10px] mt-1 italic font-bold">⚠️ {errors.newWater.message}</p>}
                   </div>
                </div>
             </div>
 
-            {/* Hàng: Phí khác */}
             <div className="grid grid-cols-2 gap-4">
                <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Phí dịch vụ / Khác</label>
-                  <input type="number" {...register('serviceFee')} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="number" min="0" onKeyDown={handleKeyDown} {...register('serviceFee')} className="w-full px-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" />
                </div>
                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Ảnh hóa đơn/CK (Nếu có)</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Ảnh hóa đơn/CK</label>
                   <div className="relative border border-dashed rounded-lg h-[42px] flex items-center px-3 cursor-pointer hover:bg-slate-50 bg-white">
                      <span className="text-sm text-slate-500 truncate">{paymentProof ? 'Đã chọn ảnh' : 'Chọn ảnh...'}</span>
                      <UploadCloud size={16} className="absolute right-3 text-slate-400"/>
@@ -286,23 +250,23 @@ export default function InvoiceModal({ isOpen, onClose, onSubmit, initialData }:
                </div>
             </div>
 
-            {/* Total */}
             <div className="bg-slate-900 text-white p-4 rounded-xl flex justify-between items-center shadow-lg">
-               <div className="flex items-center gap-2 text-slate-300">
-                  <Calculator size={20} />
-                  <span>Tổng tiền (Tạm tính):</span>
+               <div className="flex items-center gap-2 text-slate-300"><Calculator size={20} /><span>Tổng tiền (Tạm tính):</span></div>
+               <div className="text-right">
+                  {estimatedTotal === -1 ? (
+                    <div className="flex items-center gap-1 text-red-400 font-bold animate-pulse"><AlertCircle size={16} /> Chỉ số không hợp lệ - Kiểm tra lại!</div>
+                  ) : (
+                    <span className="text-2xl font-bold text-green-400">{estimatedTotal.toLocaleString()} đ</span>
+                  )}
                </div>
-               <span className="text-2xl font-bold text-green-400">
-                  {estimatedTotal.toLocaleString()} đ
-               </span>
             </div>
 
           </form>
         </div>
 
         <div className="p-4 border-t flex justify-end gap-3 bg-slate-50">
-           <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-medium">Hủy bỏ</button>
-           <button form="invoice-form" type="submit" disabled={isSubmitting} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 transition-all">
+           <button onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg">Hủy bỏ</button>
+           <button form="invoice-form" type="submit" disabled={isSubmitting || estimatedTotal === -1} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 disabled:bg-slate-400 disabled:cursor-not-allowed transition-all">
              {isSubmitting && <Loader2 className="animate-spin" size={18} />}
              {initialData ? 'Cập nhật' : 'Lập hóa đơn'}
            </button>

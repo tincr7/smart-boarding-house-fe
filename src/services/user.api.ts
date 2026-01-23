@@ -18,6 +18,7 @@ export interface User {
   phone: string;
   avatar?: string;
   role: 'ADMIN' | 'TENANT';
+faceDescriptor?: number[];
   // Relationship để lấy phòng đang ở
   contracts?: {
     status: string;
@@ -63,6 +64,23 @@ export const userApi = {
 
   delete: async (id: number) => {
     const response = await axiosInstance.delete(`/users/${id}`);
+    return response.data;
+  },
+  // Lấy danh sách đã xóa mềm
+  getDeleted: async () => {
+    const response = await axiosInstance.get<User[]>('/users/deleted');
+    return response.data;
+  },
+
+  // Khôi phục dữ liệu
+  restore: async (id: number) => {
+    const response = await axiosInstance.patch(`/users/${id}/restore`);
+    return response.data;
+  },
+
+  // Xóa vĩnh viễn (Hard Delete)
+  hardDelete: async (id: number) => {
+    const response = await axiosInstance.delete(`/users/${id}/permanent`);
     return response.data;
   }
 };

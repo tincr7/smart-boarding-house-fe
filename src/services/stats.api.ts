@@ -19,7 +19,13 @@ axiosInstance.interceptors.request.use((config) => {
   return config;
 });
 
-// --- TYPES ---
+// --- TYPES (Chỉ định nghĩa 1 lần duy nhất) ---
+
+export interface ChartData {
+  name: string;
+  total: number;
+}
+
 export interface DashboardData {
   overview: {
     branches: number;
@@ -34,15 +40,17 @@ export interface DashboardData {
   finance: {
     month: number;
     year: number;
-    revenue: number;      // Doanh thu thực tế
-    debt: number;         // Công nợ
+    revenue: number;      // Doanh thu thực tế (đã thu)
+    debt: number;         // Công nợ (chưa thu)
     totalExpected: number;// Tổng dự kiến
+    chartData: ChartData[]; // Dữ liệu cho biểu đồ cột
   };
 }
 
 // --- METHODS ---
 export const statsApi = {
   getDashboardStats: async () => {
+    // Lưu ý: Đường dẫn phải khớp với Controller ở Backend (@Get('dashboard'))
     const response = await axiosInstance.get<DashboardData>('/statistics/dashboard');
     return response.data;
   },

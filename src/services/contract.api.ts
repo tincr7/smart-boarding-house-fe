@@ -11,17 +11,18 @@ axiosInstance.interceptors.request.use((config) => {
   return config;
 });
 
-// Interface dựa trên JSON bạn cung cấp
 export interface Contract {
   id: number;
   startDate: string;
   endDate: string;
-  deposit: string | number; // API trả về string nhưng khi dùng có thể là number
+  deposit: string | number;
   status: 'ACTIVE' | 'TERMINATED' | 'EXPIRED'; 
   scanImage?: string;
   userId: number;
   roomId: number;
   createdAt?: string;
+  // THÊM TRƯỜNG NÀY ĐỂ HỖ TRỢ XÓA MỀM
+  deletedAt?: string | Date | null; 
   user: {
     id: number;
     fullName: string;
@@ -40,47 +41,60 @@ export interface Contract {
   };
 }
 
-// DTO khi tạo/sửa
 export interface CreateContractDto {
   roomId: number;
   userId: number;
-  startDate: string; // ISO String
-  endDate: string;   // ISO String
+  startDate: string;
+  endDate: string;
   deposit: number;
   scanImage?: string;
 }
 
 export const contractApi = {
-  // 1. Lấy danh sách
   getAll: async () => {
     const response = await axiosInstance.get<Contract[]>('/contracts');
     return response.data;
   },
 
-  // 2. Lấy chi tiết
   getDetail: async (id: number) => {
     const response = await axiosInstance.get<Contract>(`/contracts/${id}`);
     return response.data;
   },
 
-  // 3. Tạo mới
   create: async (data: CreateContractDto) => {
     const response = await axiosInstance.post('/contracts', data);
     return response.data;
   },
 
-  // 4. Cập nhật thông tin
   update: async (id: number, data: Partial<CreateContractDto>) => {
     const response = await axiosInstance.patch(`/contracts/${id}`, data);
     return response.data;
   },
 
-  // 5. Thanh lý hợp đồng (Kết thúc sớm)
-  terminate: async (id: number) => {
-    // Thường backend sẽ có endpoint riêng để xử lý logic trả phòng + đổi trạng thái
-    // Nếu backend bạn dùng PATCH status thì sửa dòng này tương ứng
-    const response = await axiosInstance.patch(`/contracts/${id}/terminate`);
-    // Hoặc: const response = await axiosInstance.patch(`/contracts/${id}`, { status: 'TERMINATED' });
+  // SỬA HÀM NÀY: Dùng delete để thống nhất với các Page khác
+  delete: async (id: number) => {
+    // Gọi method DELETE lên backend. Backend sẽ thực hiện Soft Delete
+    const response = await axiosInstance.delete(`/contracts/${id}`);
     return response.data;
-  }
+  },
+
+  // Giữ lại terminate nếu Giang muốn dùng logic kết thúc sớm mà không ẩn bản ghi
+  terminate: async (id: number) => {
+    const response = await axiosInstance.patch(`/contracts/${id}/terminate`);
+    return response.data;
+  },
+  getDeleted: async () => {
+    const response = await axiosInstance.get<Contract[]>('/contracts/deleted');
+    return response.data;
+  },
+
+  restore: async (id: number) => {
+    const response = await axiosInstance.patch(`/contracts/${id}/restore`);
+    return response.data;
+  },
+
+  hardDelete: async (id: number) => {
+    const response = await axiosInstance.delete(`/contracts/${id}/permanent`);
+    return response.data;
+  },
 };
