@@ -4,11 +4,10 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { X, Loader2, UploadCloud } from 'lucide-react';
+import { X, Loader2, UploadCloud, MapPin, User, Building2 } from 'lucide-react';
 import { Branch } from '@/services/branch.api';
 import { uploadApi } from '@/services/upload.api';
 
-// Schema validate dữ liệu
 const branchSchema = z.object({
   name: z.string().min(1, 'Tên khu trọ không được để trống'),
   address: z.string().min(1, 'Địa chỉ không được để trống'),
@@ -33,13 +32,12 @@ export default function BranchModal({ isOpen, onClose, onSubmit, initialData }: 
     resolver: zodResolver(branchSchema),
   });
 
-  // Reset form khi mở modal hoặc thay đổi chế độ (Thêm/Sửa)
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
         setValue('name', initialData.name);
         setValue('address', initialData.address);
-        setValue('manager', initialData.manager);
+        setValue('manager', initialData.manager || '');
         setPreviewImage(initialData.image || null);
       } else {
         reset({ name: '', address: '', manager: '' });
@@ -53,39 +51,30 @@ export default function BranchModal({ isOpen, onClose, onSubmit, initialData }: 
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
-      setPreviewImage(URL.createObjectURL(file)); // Xem trước ảnh
+      setPreviewImage(URL.createObjectURL(file));
     }
   };
 
   const onFormSubmit = async (data: BranchFormValues) => {
     setIsSubmitting(true);
     try {
-      let imageUrl = initialData?.image || ''; // Mặc định lấy ảnh cũ nếu có
+      let imageUrl = initialData?.image || '';
 
-      // 1. Nếu người dùng có chọn file mới -> Upload lên server trước
       if (selectedFile) {
-        console.log('Đang upload ảnh...');
         const uploadRes = await uploadApi.upload(selectedFile, 'branches');
-        
-        // Cần kiểm tra Backend trả về key gì. Ví dụ: res.url, res.path, hay res.secure_url
-        imageUrl = uploadRes.url || uploadRes.secure_url || uploadRes.path; 
-        console.log('Upload thành công:', imageUrl);
+        // Đồng bộ key trả về từ Cloudinary/Server
+        imageUrl = uploadRes.url || uploadRes.secure_url || uploadRes.data?.url || uploadRes; 
       }
 
-      // 2. Gom dữ liệu thành JSON
       const payload = {
-        name: data.name,
-        address: data.address,
-        manager: data.manager,
-        image: imageUrl, // Gửi chuỗi URL
+        ...data,
+        image: imageUrl,
       };
       
-      // 3. Gửi JSON xuống component cha
       await onSubmit(payload);
       onClose();
     } catch (error) {
-      console.error('Lỗi khi xử lý form:', error);
-      alert('Có lỗi xảy ra (Upload ảnh hoặc Lưu dữ liệu). Vui lòng thử lại.');
+      alert('Lỗi khi xử lý dữ liệu chi nhánh.');
     } finally {
       setIsSubmitting(false);
     }
@@ -94,89 +83,96 @@ export default function BranchModal({ isOpen, onClose, onSubmit, initialData }: 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
         
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-          <h2 className="text-xl font-bold text-slate-800">
-            {initialData ? 'Chỉnh sửa Khu trọ' : 'Thêm Khu trọ mới'}
-          </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+        {/* Header - Phong cách SmartHouse AI */}
+        <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+          <div>
+            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter italic">
+              {initialData ? 'Cập nhật Cơ sở' : 'Khởi tạo Cơ sở mới'}
+            </h2>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Hệ thống mở rộng chuỗi nhà trọ</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-red-50 hover:text-red-500 rounded-xl transition-all">
             <X size={24} />
           </button>
         </div>
 
-        {/* Body */}
-        <form onSubmit={handleSubmit(onFormSubmit)} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit(onFormSubmit)} className="p-8 space-y-6">
           
-          {/* Ảnh Cover */}
+          {/* Ảnh Cover với thiết kế bo góc lớn */}
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-700">Hình ảnh</label>
-            <div className="relative h-40 w-full rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center overflow-hidden hover:border-blue-500 transition-colors cursor-pointer group">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+              <UploadCloud size={14} className="text-blue-500" /> Hình ảnh nhận diện cơ sở
+            </label>
+            <div className="relative h-44 w-full rounded-[2rem] border-4 border-dashed border-slate-100 bg-slate-50 flex flex-col items-center justify-center overflow-hidden hover:border-blue-500 transition-all cursor-pointer group shadow-inner">
                {previewImage ? (
-                 <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
+                 <img src={previewImage} alt="Preview" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                ) : (
                  <div className="text-center p-4">
-                   <UploadCloud className="mx-auto h-8 w-8 text-slate-400" />
-                   <p className="mt-1 text-xs text-slate-500">Bấm để chọn ảnh</p>
+                   <UploadCloud className="mx-auto h-10 w-10 text-slate-300 mb-2" />
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tải ảnh mặt tiền</p>
                  </div>
                )}
-               <input 
-                 type="file" 
-                 accept="image/*" 
-                 onChange={handleFileChange}
-                 className="absolute inset-0 opacity-0 cursor-pointer"
-               />
+               <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700">Tên Khu Trọ</label>
-            <input 
-              {...register('name')}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-              placeholder="Ví dụ: Nhà trọ Hạnh Phúc"
-            />
-            {errors.name && <p className="text-red-500 text-xs">{errors.name.message}</p>}
-          </div>
+          <div className="space-y-4">
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                <Building2 size={14} className="text-blue-500" /> Tên gọi cơ sở
+              </label>
+              <input 
+                {...register('name')}
+                className="w-full px-4 py-3 bg-slate-50 border-transparent rounded-xl text-xs font-bold uppercase outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" 
+                placeholder="VÍ DỤ: SMARTHOUSE CẦU GIẤY"
+              />
+              {errors.name && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.name.message}</p>}
+            </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700">Địa chỉ</label>
-            <input 
-              {...register('address')}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-              placeholder="Số 123, Đường ABC..."
-            />
-            {errors.address && <p className="text-red-500 text-xs">{errors.address.message}</p>}
-          </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                <MapPin size={14} className="text-emerald-500" /> Địa chỉ chính xác
+              </label>
+              <input 
+                {...register('address')}
+                className="w-full px-4 py-3 bg-slate-50 border-transparent rounded-xl text-xs font-bold uppercase outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" 
+                placeholder="SỐ NHÀ, TÊN ĐƯỜNG, QUẬN/HUYỆN..."
+              />
+              {errors.address && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.address.message}</p>}
+            </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700">Người quản lý</label>
-            <input 
-              {...register('manager')}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-              placeholder="Nguyễn Văn A"
-            />
-            {errors.manager && <p className="text-red-500 text-xs">{errors.manager.message}</p>}
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                <User size={14} className="text-violet-500" /> Quản lý chi nhánh
+              </label>
+              <input 
+                {...register('manager')}
+                className="w-full px-4 py-3 bg-slate-50 border-transparent rounded-xl text-xs font-bold uppercase outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" 
+                placeholder="TÊN NGƯỜI CHỊU TRÁCH NHIỆM"
+              />
+              {errors.manager && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.manager.message}</p>}
+            </div>
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-4 flex justify-end gap-3">
+          <div className="pt-6 flex justify-end gap-4 border-t border-slate-50">
             <button 
               type="button" 
               onClick={onClose}
-              className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg"
+              className="px-6 py-3 text-slate-400 hover:text-slate-900 font-black text-[10px] uppercase tracking-widest transition-all"
             >
-              Hủy
+              Hủy bỏ
             </button>
             <button 
               type="submit" 
               disabled={isSubmitting}
-              className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-70"
+              className="px-10 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 shadow-xl shadow-slate-200 transition-all flex items-center gap-3 disabled:opacity-50 active:scale-95"
             >
-              {isSubmitting && <Loader2 className="animate-spin" size={18} />}
-              {initialData ? 'Lưu thay đổi' : 'Tạo mới'}
+              {isSubmitting && <Loader2 className="animate-spin" size={16} />}
+              {initialData ? 'Lưu thay đổi' : 'Tạo cơ sở mới'}
             </button>
           </div>
         </form>

@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { X, Loader2, User, Mail, Phone, Lock } from 'lucide-react';
-import { CreateUserDto } from '@/services/user.api';
+import { X, Loader2, User, Mail, Phone, Lock, Building2, ShieldCheck } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext'; // MỚI: Dùng AuthContext để lấy branchId
 
 // Validate
 const userSchema = z.object({
@@ -24,10 +24,11 @@ interface TenantModalProps {
 }
 
 export default function TenantModal({ isOpen, onClose, onSubmit }: TenantModalProps) {
+  const { user: currentUser } = useAuth(); // Lấy thông tin Admin hiện tại
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<UserFormValues>({
-    resolver: zodResolver(userSchema) as any, // Dùng as any để tránh lỗi type conflict
+    resolver: zodResolver(userSchema) as any,
   });
 
   useEffect(() => {
@@ -39,11 +40,18 @@ export default function TenantModal({ isOpen, onClose, onSubmit }: TenantModalPr
   const onFormSubmit: SubmitHandler<UserFormValues> = async (data) => {
     setIsSubmitting(true);
     try {
-      // Mặc định tạo user có role là TENANT
-      await onSubmit({ ...data, role: 'TENANT' });
+      // ĐA CHI NHÁNH: Tự động đính kèm branchId của Admin vào hồ sơ cư dân mới
+      const payload = { 
+        ...data, 
+        role: 'TENANT',
+        branchId: currentUser?.branchId || undefined 
+      };
+      
+      await onSubmit(payload);
       onClose();
     } catch (error) {
-      alert('Lỗi khi tạo cư dân');
+      console.error("Lỗi khi tạo cư dân:", error);
+      alert('Lỗi khi tạo cư dân. Vui lòng kiểm tra email/SĐT có bị trùng lặp không.');
     } finally {
       setIsSubmitting(false);
     }
@@ -52,56 +60,95 @@ export default function TenantModal({ isOpen, onClose, onSubmit }: TenantModalPr
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="px-6 py-4 border-b flex justify-between items-center bg-slate-50">
-          <h2 className="text-xl font-bold text-slate-800">Thêm Cư dân mới</h2>
-          <button onClick={onClose}><X size={24} className="text-slate-400 hover:text-red-500" /></button>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-[2.5rem] w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
+        
+        {/* Header - Phong cách SmartHouse AI */}
+        <div className="px-8 py-6 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+          <div>
+            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter italic">Đăng ký Cư dân</h2>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 flex items-center gap-2">
+              <Building2 size={12} className="text-blue-500" />
+              {currentUser?.branchId ? `Cấp hồ sơ cho chi nhánh ${currentUser.branchId}` : 'Khởi tạo cư dân hệ thống'}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-red-50 hover:text-red-500 rounded-xl transition-all">
+            <X size={24} className="text-slate-400" />
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit(onFormSubmit)} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit(onFormSubmit)} className="p-8 space-y-6">
           
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Họ và tên</label>
-            <div className="relative">
-               <User className="absolute left-3 top-2.5 text-slate-400" size={18} />
-               <input {...register('fullName')} className="w-full pl-10 pr-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nguyễn Văn A" />
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Họ và tên định danh</label>
+              <div className="relative">
+                 <User className="absolute left-4 top-3.5 text-slate-300" size={18} />
+                 <input 
+                  {...register('fullName')} 
+                  className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-transparent rounded-xl text-xs font-bold uppercase outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" 
+                  placeholder="NGUYỄN VĂN A" 
+                />
+              </div>
+              {errors.fullName && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.fullName.message}</p>}
             </div>
-            {errors.fullName && <p className="text-red-500 text-xs mt-1">{errors.fullName.message}</p>}
+
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Địa chỉ Email xác thực</label>
+              <div className="relative">
+                 <Mail className="absolute left-4 top-3.5 text-slate-300" size={18} />
+                 <input 
+                  {...register('email')} 
+                  className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-transparent rounded-xl text-xs font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" 
+                  placeholder="USER@EXAMPLE.COM" 
+                />
+              </div>
+              {errors.email && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.email.message}</p>}
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Số điện thoại liên lạc</label>
+              <div className="relative">
+                 <Phone className="absolute left-4 top-3.5 text-slate-300" size={18} />
+                 <input 
+                  {...register('phone')} 
+                  className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-transparent rounded-xl text-xs font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" 
+                  placeholder="0912345678" 
+                />
+              </div>
+              {errors.phone && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.phone.message}</p>}
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Mật khẩu truy cập AI</label>
+              <div className="relative">
+                 <Lock className="absolute left-4 top-3.5 text-slate-300" size={18} />
+                 <input 
+                  type="password" 
+                  {...register('password')} 
+                  className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-transparent rounded-xl text-xs font-bold outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" 
+                  placeholder="******" 
+                />
+              </div>
+              {errors.password && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.password.message}</p>}
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-            <div className="relative">
-               <Mail className="absolute left-3 top-2.5 text-slate-400" size={18} />
-               <input {...register('email')} className="w-full pl-10 pr-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="user@example.com" />
-            </div>
-            {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Số điện thoại</label>
-            <div className="relative">
-               <Phone className="absolute left-3 top-2.5 text-slate-400" size={18} />
-               <input {...register('phone')} className="w-full pl-10 pr-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="0912345678" />
-            </div>
-            {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Mật khẩu khởi tạo</label>
-            <div className="relative">
-               <Lock className="absolute left-3 top-2.5 text-slate-400" size={18} />
-               <input type="password" {...register('password')} className="w-full pl-10 pr-3 py-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="******" />
-            </div>
-            {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
-          </div>
-
-          <div className="pt-4 flex justify-end gap-3">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Hủy</button>
-            <button type="submit" disabled={isSubmitting} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2">
-              {isSubmitting && <Loader2 className="animate-spin" size={18} />}
-              Tạo tài khoản
+          <div className="pt-6 flex justify-end gap-4 border-t border-slate-50">
+            <button 
+              type="button" 
+              onClick={onClose} 
+              className="px-6 py-3 text-slate-400 hover:text-slate-900 font-black text-[10px] uppercase tracking-widest transition-all"
+            >
+              Hủy bỏ
+            </button>
+            <button 
+              type="submit" 
+              disabled={isSubmitting} 
+              className="px-10 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 shadow-xl shadow-slate-200 transition-all flex items-center gap-3 disabled:opacity-50 active:scale-95"
+            >
+              {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <ShieldCheck size={16} />}
+              Tạo hồ sơ cư dân
             </button>
           </div>
         </form>

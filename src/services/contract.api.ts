@@ -21,7 +21,6 @@ export interface Contract {
   userId: number;
   roomId: number;
   createdAt?: string;
-  // THÊM TRƯỜNG NÀY ĐỂ HỖ TRỢ XÓA MỀM
   deletedAt?: string | Date | null; 
   user: {
     id: number;
@@ -38,6 +37,12 @@ export interface Contract {
     area?: number;
     image?: string;
     branchId?: number;
+    // BỔ SUNG TRƯỜNG NÀY ĐỂ DỨT ĐIỂM LỖI TRANG TENANTS
+    branch?: {
+      id: number;
+      name: string;
+      address: string;
+    };
   };
 }
 
@@ -51,8 +56,11 @@ export interface CreateContractDto {
 }
 
 export const contractApi = {
-  getAll: async () => {
-    const response = await axiosInstance.get<Contract[]>('/contracts');
+  // CẬP NHẬT: Cho phép truyền branchId để lọc đa chi nhánh
+  getAll: async (userId?: number, branchId?: number) => {
+    const response = await axiosInstance.get<Contract[]>('/contracts', {
+      params: { userId, branchId }
+    });
     return response.data;
   },
 
@@ -71,20 +79,21 @@ export const contractApi = {
     return response.data;
   },
 
-  // SỬA HÀM NÀY: Dùng delete để thống nhất với các Page khác
   delete: async (id: number) => {
-    // Gọi method DELETE lên backend. Backend sẽ thực hiện Soft Delete
     const response = await axiosInstance.delete(`/contracts/${id}`);
     return response.data;
   },
 
-  // Giữ lại terminate nếu Giang muốn dùng logic kết thúc sớm mà không ẩn bản ghi
   terminate: async (id: number) => {
     const response = await axiosInstance.patch(`/contracts/${id}/terminate`);
     return response.data;
   },
-  getDeleted: async () => {
-    const response = await axiosInstance.get<Contract[]>('/contracts/deleted');
+
+  // CẬP NHẬT: Thùng rác cũng cần lọc theo chi nhánh
+  getDeleted: async (branchId?: number) => {
+    const response = await axiosInstance.get<Contract[]>('/contracts/deleted', {
+      params: { branchId }
+    });
     return response.data;
   },
 

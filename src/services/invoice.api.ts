@@ -11,6 +11,8 @@ axiosInstance.interceptors.request.use((config) => {
   return config;
 });
 
+// --- TYPES ---
+
 export interface Invoice {
   id: number;
   month: number;
@@ -25,7 +27,6 @@ export interface Invoice {
   paymentProof?: string;
   roomId: number;
   createdAt: string;
-  // THÊM TRƯỜNG NÀY ĐỂ HẾT LỖI TYPESCRIPT KHI FILTER XÓA MỀM
   deletedAt?: string | Date | null; 
   room: {
     id: number;
@@ -33,6 +34,12 @@ export interface Invoice {
     price: string | number;
     status: string;
     branchId: number;
+    // BỔ SUNG TRƯỜNG NÀY ĐỂ HẾT LỖI Ở TRANG TENANTS/INVOICES
+    branch?: {
+      id: number;
+      name: string;
+      address: string;
+    };
     contracts?: any[]; 
   };
 }
@@ -49,10 +56,14 @@ export interface CreateInvoiceDto {
   paymentProof?: string;
 }
 
+// --- METHODS ---
+
 export const invoiceApi = {
-  // 1. Lấy danh sách (Backend đã filter xóa mềm, nhưng FE nên có interface chuẩn)
-  getAll: async () => {
-    const response = await axiosInstance.get<Invoice[]>('/invoices');
+  // 1. CẬP NHẬT: Cho phép nhận tham số branchId để lọc đa chi nhánh
+  getAll: async (branchId?: number) => {
+    const response = await axiosInstance.get<Invoice[]>('/invoices', {
+      params: { branchId } // Gửi branchId lên Backend qua Query Params
+    });
     return response.data;
   },
 
@@ -72,18 +83,15 @@ export const invoiceApi = {
   },
 
   confirmPayment: async (id: number) => {
-    const response = await axiosInstance.patch(`/invoices/${id}`, { status: 'PAID' });
+    const response = await axiosInstance.patch(`/invoices/${id}/pay`);
     return response.data;
   },
 
-  // 2. Tích hợp endpoint gửi Mail thật từ Backend
   sendNotification: async (id: number) => {
-    // Giang nên gọi endpoint thật để Mailer ở Backend hoạt động
-    const response = await axiosInstance.post(`/invoices/${id}/send-mail`);
+    const response = await axiosInstance.post(`/invoices/${id}/trigger-reminder`);
     return response.data;
   },
 
-  // 3. Xóa mềm (Soft Delete)
   delete: async (id: number) => {
     const response = await axiosInstance.delete(`/invoices/${id}`);
     return response.data;
@@ -93,8 +101,12 @@ export const invoiceApi = {
     const response = await axiosInstance.get(`/invoices/latest/${roomId}`);
     return response.data; 
   },
-  getDeleted: async () => {
-    const response = await axiosInstance.get<Invoice[]>('/invoices/deleted');
+
+  // Cập nhật: Thùng rác cũng nên hỗ trợ lọc theo chi nhánh
+  getDeleted: async (branchId?: number) => {
+    const response = await axiosInstance.get<Invoice[]>('/invoices/deleted', {
+      params: { branchId }
+    });
     return response.data;
   },
 

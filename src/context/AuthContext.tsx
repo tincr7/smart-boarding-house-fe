@@ -2,12 +2,12 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { userApi, User } from '@/services/user.api';
+import { userApi, User } from '@/services/user.api'; // Sử dụng trực tiếp interface User
 import { Loader2 } from 'lucide-react';
 import Cookies from 'js-cookie';
 
 interface AuthContextType {
-  user: User | null;
+  user: User | null; // Không dùng ExtendedUser nữa
   loading: boolean;
   isAdmin: boolean;
   logout: () => void;
@@ -30,29 +30,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const fetchProfile = async () => {
     const token = Cookies.get('access_token');
-    // TRƯỜNG HỢP: KHÔNG CÓ TOKEN (KHÁCH VÃNG LAI)
+    
+    // 1. TRƯỜNG HỢP: KHÔNG CÓ TOKEN
     if (!token) {
       setLoading(false);
-      
-      // --- SỬA ĐOẠN NÀY ---
-      // Định nghĩa các trang "Công khai" ai cũng vào được
       const publicPaths = ['/', '/login', '/register'];
-      
-      // Nếu trang hiện tại KHÔNG nằm trong danh sách công khai thì mới bắt đăng nhập
       if (!publicPaths.includes(pathname)) {
         router.push('/login');
       }
-      // --------------------
       return;
     }
 
-    // TRƯỜNG HỢP: CÓ TOKEN (ĐÃ ĐĂNG NHẬP)
+    // 2. TRƯỜNG HỢP: CÓ TOKEN
     try {
       const userData = await userApi.getProfile();
       setUser(userData);
+      
+      // Lưu branchId vào sessionStorage để sử dụng cho các mục đích khác nếu cần
+      if (userData.branchId) {
+        sessionStorage.setItem('managed_branch_id', userData.branchId.toString());
+      } else {
+        sessionStorage.removeItem('managed_branch_id');
+      }
     } catch (error) {
-      console.error('Token lỗi:', error);
+      console.error('Lỗi xác thực Profile:', error);
       Cookies.remove('access_token');
+      sessionStorage.removeItem('managed_branch_id');
       router.push('/login');
     } finally {
       setLoading(false);
@@ -65,23 +68,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const logout = () => {
     Cookies.remove('access_token');
+    sessionStorage.removeItem('managed_branch_id');
     setUser(null);
     router.push('/login');
   };
 
   const isAdmin = user?.role === 'ADMIN';
 
-  // Chặn truy cập trang Dashboard và Tenants nếu là TENANT
+  // 3. PHÂN QUYỀN TRUY CẬP
   useEffect(() => {
     if (!loading && user && user.role === 'TENANT') {
       const restrictedPaths = ['/dashboard', '/tenants'];
       if (restrictedPaths.some(path => pathname.startsWith(path))) {
-        router.push('/rooms'); // Chuyển hướng Tenant về trang phòng
+        router.push('/rooms'); 
       }
     }
   }, [loading, user, pathname, router]);
 
-  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={40}/></div>;
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-slate-50">
+      <Loader2 className="animate-spin text-blue-600" size={40}/>
+    </div>
+  );
 
   return (
     <AuthContext.Provider value={{ user, loading, isAdmin, logout, refreshProfile: fetchProfile }}>

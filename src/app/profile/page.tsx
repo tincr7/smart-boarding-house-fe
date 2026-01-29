@@ -14,19 +14,20 @@ import {
   Save, 
   ShieldCheck,
   Eye,
-  EyeOff
+  EyeOff,
+  Building2 // Thêm icon tòa nhà
 } from 'lucide-react';
 
 import Sidebar from '@/components/shared/Sidebar';
 import { userApi, User } from '@/services/user.api';
 import { uploadApi } from '@/services/upload.api';
+import { branchApi, Branch } from '@/services/branch.api'; // Thêm API branch
 
 // Schema Validate
 const profileSchema = z.object({
   fullName: z.string().min(1, 'Họ tên không được để trống'),
   email: z.string().email('Email không hợp lệ'),
   phone: z.string().min(9, 'Số điện thoại không hợp lệ'),
-  // Mật khẩu là tùy chọn (nếu nhập thì validate min 6, không nhập thì thôi)
   password: z.string().optional().refine(val => !val || val.length >= 6, {
     message: "Mật khẩu mới phải từ 6 ký tự trở lên"
   }),
@@ -36,38 +37,39 @@ type ProfileFormValues = z.infer<typeof profileSchema>;
 
 export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null);
+  const [branch, setBranch] = useState<Branch | null>(null); // State lưu chi nhánh
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   
-  // Xử lý ảnh đại diện
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  
-  // Ẩn/Hiện mật khẩu
   const [showPassword, setShowPassword] = useState(false);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
   });
 
-  // 1. Tải thông tin Profile
   const fetchProfile = async () => {
     try {
       setLoading(true);
       const userData = await userApi.getProfile();
       setUser(userData);
       
-      // Fill dữ liệu vào form
+      // Nếu user thuộc một chi nhánh, lấy thông tin chi nhánh đó
+      if (userData.branchId) {
+        const branchData = await branchApi.getDetail(userData.branchId);
+        setBranch(branchData);
+      }
+      
       setAvatarPreview(userData.avatar || null);
       reset({
         fullName: userData.fullName,
         email: userData.email,
         phone: userData.phone,
-        password: '', // Mật khẩu luôn để trống ban đầu
+        password: '',
       });
     } catch (error) {
-      console.error(error);
-      alert('Không thể tải thông tin tài khoản.');
+      console.error("Lỗi tải profile:", error);
     } finally {
       setLoading(false);
     }
@@ -77,7 +79,6 @@ export default function ProfilePage() {
     fetchProfile();
   }, []);
 
-  // Xử lý chọn ảnh
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const file = e.target.files[0];
@@ -86,7 +87,6 @@ export default function ProfilePage() {
     }
   };
 
-  // 2. Submit cập nhật
   const onSubmit = async (data: ProfileFormValues) => {
     if (!user) return;
     setIsSaving(true);
@@ -94,42 +94,31 @@ export default function ProfilePage() {
     try {
       let avatarUrl = user.avatar;
 
-      // Bước 1: Upload ảnh nếu có chọn file mới
       if (selectedFile) {
         const res = await uploadApi.upload(selectedFile, 'avatars');
-        // Logic lấy URL giống bài trước
         if (typeof res === 'string') avatarUrl = res;
-        else if (res?.secure_url) avatarUrl = res.secure_url;
         else if (res?.url) avatarUrl = res.url;
-        else if (res?.data?.url) avatarUrl = res.data.url;
       }
 
-      // Bước 2: Chuẩn bị Payload
       const payload: any = {
         fullName: data.fullName,
         email: data.email,
         phone: data.phone,
         avatar: avatarUrl,
-        role: user.role, // Giữ nguyên role cũ
+        role: user.role,
+        branchId: user.branchId, // Giữ nguyên branchId hiện tại
       };
 
-      // Chỉ gửi password nếu người dùng có nhập
       if (data.password && data.password.trim() !== '') {
         payload.password = data.password;
       }
 
-      console.log('Payload Update:', payload);
-
-      // Bước 3: Gọi API cập nhật
       await userApi.update(user.id, payload);
-      
       alert('Cập nhật hồ sơ thành công!');
-      fetchProfile(); // Refresh lại data
+      fetchProfile();
       
     } catch (error: any) {
-      console.error(error);
-      const msg = error?.response?.data?.message || 'Lỗi khi cập nhật hồ sơ.';
-      alert(`Thất bại: ${msg}`);
+      alert('Lỗi khi cập nhật hồ sơ.');
     } finally {
       setIsSaving(false);
     }
@@ -146,130 +135,127 @@ export default function ProfilePage() {
       <Sidebar />
       <main className="flex-1 ml-64 p-8">
         
-        <h1 className="text-2xl font-bold text-slate-900 mb-6">Thông tin tài khoản</h1>
+        <h1 className="text-3xl font-black text-slate-900 mb-8 uppercase tracking-tighter italic">Cài đặt cá nhân</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* CỘT TRÁI: Avatar & Thông tin cơ bản */}
+          {/* CỘT TRÁI: Hồ sơ & Chi nhánh */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 flex flex-col items-center text-center h-full">
+            <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-10 flex flex-col items-center text-center">
               
-              <div className="relative group mb-4">
-                <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-slate-100 shadow-inner bg-slate-50">
+              <div className="relative group mb-6">
+                <div className="w-40 h-40 rounded-[2.5rem] overflow-hidden border-4 border-slate-50 shadow-xl bg-slate-50">
                   {avatarPreview ? (
-                    <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
+                    <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-300">
-                      <UserIcon size={64} />
+                    <div className="w-full h-full flex items-center justify-center text-slate-200 bg-slate-100">
+                      <UserIcon size={80} />
                     </div>
                   )}
                 </div>
                 
-                {/* Nút upload ảnh đè lên */}
-                <label className="absolute bottom-0 right-0 bg-blue-600 text-white p-2.5 rounded-full cursor-pointer hover:bg-blue-700 shadow-lg border-2 border-white transition-transform transform hover:scale-110">
-                  <Camera size={18} />
+                <label className="absolute -bottom-2 -right-2 bg-slate-900 text-white p-3 rounded-2xl cursor-pointer hover:bg-blue-600 shadow-xl border-4 border-white transition-all transform hover:scale-110">
+                  <Camera size={20} />
                   <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
                 </label>
               </div>
 
-              <h2 className="text-xl font-bold text-slate-900">{user?.fullName}</h2>
-              <p className="text-slate-500 text-sm mb-4">{user?.email}</p>
+              <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">{user?.fullName}</h2>
+              <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1 mb-6">{user?.email}</p>
 
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-100 uppercase tracking-wide">
-                <ShieldCheck size={14} />
-                {user?.role}
+              <div className="flex flex-col gap-3 w-full">
+                <div className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-2xl bg-blue-50 text-blue-700 text-[10px] font-black border-2 border-blue-100 uppercase tracking-widest">
+                  <ShieldCheck size={16} /> {user?.role}
+                </div>
+                
+                {/* HIỂN THỊ CHI NHÁNH */}
+                {branch && (
+                  <div className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200">
+                    <Building2 size={16} className="text-blue-400" /> {branch.name}
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
           {/* CỘT PHẢI: Form chỉnh sửa */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-              <h3 className="font-bold text-lg text-slate-900 mb-6 flex items-center gap-2 border-b pb-4">
-                <UserIcon size={20} className="text-blue-600"/> Chỉnh sửa thông tin
+            <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-10">
+              <h3 className="font-black text-sm text-slate-900 uppercase tracking-[0.2em] mb-10 flex items-center gap-3 border-b border-slate-50 pb-6">
+                <UserIcon size={20} className="text-blue-600"/> Hiệu chỉnh hồ sơ AI
               </h3>
 
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
                 
-                {/* Họ tên */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Họ và tên</label>
-                  <div className="relative">
-                    <UserIcon className="absolute left-3 top-2.5 text-slate-400" size={18} />
-                    <input 
-                      {...register('fullName')} 
-                      className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none border-slate-300" 
-                      placeholder="Nhập họ tên..."
-                    />
-                  </div>
-                  {errors.fullName && <p className="text-red-500 text-xs mt-1">{errors.fullName.message}</p>}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Email */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Địa chỉ Email</label>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Họ và tên định danh</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                      <UserIcon className="absolute left-4 top-3.5 text-slate-300" size={18} />
                       <input 
-                        {...register('email')} 
-                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none border-slate-300" 
-                        placeholder="example@gmail.com"
+                        {...register('fullName')} 
+                        className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-transparent rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all text-xs font-bold uppercase tracking-tight" 
                       />
                     </div>
-                    {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+                    {errors.fullName && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.fullName.message}</p>}
                   </div>
 
-                  {/* Số điện thoại */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Số điện thoại</label>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Số điện thoại liên lạc</label>
                     <div className="relative">
-                      <Phone className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                      <Phone className="absolute left-4 top-3.5 text-slate-300" size={18} />
                       <input 
                         {...register('phone')} 
-                        className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none border-slate-300" 
-                        placeholder="0912..."
+                        className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-transparent rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all text-xs font-bold" 
                       />
                     </div>
-                    {errors.phone && <p className="text-red-500 text-xs mt-1">{errors.phone.message}</p>}
+                    {errors.phone && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.phone.message}</p>}
                   </div>
                 </div>
 
-                <hr className="border-slate-100 my-2" />
-
-                {/* Mật khẩu */}
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
-                    Đổi mật khẩu <span className="text-slate-400 font-normal">(Bỏ trống nếu không muốn đổi)</span>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Địa chỉ Email xác thực</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-3.5 text-slate-300" size={18} />
+                    <input 
+                      {...register('email')} 
+                      className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-transparent rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all text-xs font-bold" 
+                    />
+                  </div>
+                  {errors.email && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.email.message}</p>}
+                </div>
+
+                <div className="pt-4 border-t border-slate-50">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    Mật khẩu truy cập <span className="text-blue-500 lowercase">(Bỏ trống nếu không thay đổi)</span>
                   </label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-2.5 text-slate-400" size={18} />
+                    <Lock className="absolute left-4 top-3.5 text-slate-300" size={18} />
                     <input 
                       type={showPassword ? "text" : "password"}
                       {...register('password')} 
-                      className="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none border-slate-300" 
-                      placeholder="Nhập mật khẩu mới..."
+                      className="w-full pl-12 pr-12 py-3.5 bg-slate-50 border-transparent rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all text-xs font-bold"
                       autoComplete="new-password"
                     />
                     <button 
                       type="button" 
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                      className="absolute right-4 top-3.5 text-slate-300 hover:text-slate-600 transition-colors"
                     >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                     </button>
                   </div>
-                  {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
+                  {errors.password && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.password.message}</p>}
                 </div>
 
-                <div className="pt-4 flex justify-end">
+                <div className="pt-6 flex justify-end">
                    <button 
                      type="submit" 
                      disabled={isSaving}
-                     className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all flex items-center gap-2 disabled:opacity-70"
+                     className="bg-slate-900 text-white px-10 py-4 rounded-[1.5rem] font-black text-xs uppercase tracking-widest hover:bg-blue-600 shadow-xl shadow-slate-200 transition-all flex items-center gap-3 disabled:opacity-50 active:scale-95"
                    >
                      {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-                     Lưu thay đổi
+                     Lưu thông tin hồ sơ
                    </button>
                 </div>
 

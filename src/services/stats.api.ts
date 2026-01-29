@@ -10,7 +10,6 @@ const axiosInstance = axios.create({
   },
 });
 
-// Thêm token vào header mỗi lần gọi
 axiosInstance.interceptors.request.use((config) => {
   const token = Cookies.get('access_token');
   if (token) {
@@ -19,11 +18,31 @@ axiosInstance.interceptors.request.use((config) => {
   return config;
 });
 
-// --- TYPES (Chỉ định nghĩa 1 lần duy nhất) ---
+// --- TYPES ---
 
 export interface ChartData {
   name: string;
   total: number;
+}
+
+// MỚI: Định nghĩa kiểu dữ liệu cho Chi nhánh
+export interface Branch {
+  id: number;
+  name: string;
+  address: string;
+  manager: string;
+}
+
+export interface AccessLog {
+  id: number;
+  method: 'FACE_ID' | 'FINGERPRINT';
+  status: 'SUCCESS' | 'FAILED' | 'DENIED';
+  createdAt: string;
+  branchName?: string; 
+  user?: {
+    fullName: string;
+    roomNumber: string;
+  };
 }
 
 export interface DashboardData {
@@ -40,18 +59,48 @@ export interface DashboardData {
   finance: {
     month: number;
     year: number;
-    revenue: number;      // Doanh thu thực tế (đã thu)
-    debt: number;         // Công nợ (chưa thu)
-    totalExpected: number;// Tổng dự kiến
-    chartData: ChartData[]; // Dữ liệu cho biểu đồ cột
+    revenue: number;
+    debt: number;
+    totalExpected: number;
+    chartData: ChartData[];
   };
 }
 
 // --- METHODS ---
 export const statsApi = {
-  getDashboardStats: async () => {
-    // Lưu ý: Đường dẫn phải khớp với Controller ở Backend (@Get('dashboard'))
-    const response = await axiosInstance.get<DashboardData>('/statistics/dashboard');
+  // 1. Lấy dữ liệu thống kê tổng quan (Có lọc theo chi nhánh)
+  getDashboardStats: async (branchId?: number) => {
+    const response = await axiosInstance.get<DashboardData>('/statistics/dashboard', {
+      params: { branchId }
+    });
+    return response.data;
+  },
+
+  // 2. Lấy nhật ký ra vào (Lọc theo chi nhánh cho Admin cơ sở)
+  getRecentAccessLogs: async (limit: number = 10, branchId?: number) => {
+    const response = await axiosInstance.get<AccessLog[]>('/access-control/logs/recent', {
+      params: { limit, branchId }
+    });
+    return response.data;
+  },
+
+  // 3. API Xác thực khuôn mặt (Gửi kèm Device ID để xác định cơ sở)
+  verifyFaceWithAI: async (file: File, deviceId: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await axiosInstance.post('/access-control/verify-face', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'x-device-id': deviceId, 
+      },
+    });
+    return response.data;
+  },
+
+  // 4. MỚI: Lấy danh sách chi nhánh từ Database thay vì fix cứng
+  getAllBranches: async () => {
+    const response = await axiosInstance.get<Branch[]>('/branches');
     return response.data;
   },
 };
