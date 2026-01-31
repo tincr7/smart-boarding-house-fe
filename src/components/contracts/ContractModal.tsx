@@ -1,24 +1,25 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useForm, SubmitHandler } from 'react-hook-form';
+import { useForm, SubmitHandler, Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { X, Loader2, UploadCloud, Calendar, MapPin, Home, User as UserIcon, AlertTriangle } from 'lucide-react';
+import { X, Loader2, UploadCloud, MapPin, Home, User as UserIcon, AlertTriangle } from 'lucide-react';
 import { Contract, contractApi } from '@/services/contract.api';
 import { uploadApi } from '@/services/upload.api';
 import { roomApi, Room } from '@/services/room.api';
 import { userApi, User } from '@/services/user.api';
 import { branchApi, Branch } from '@/services/branch.api';
-import { useAuth } from '@/context/AuthContext'; // MỚI: Dùng AuthContext để lấy chi nhánh của Admin
+import { useAuth } from '@/context/AuthContext';
 
+// 1. SCHEMA CHẶT CHẼ
 const contractSchema = z.object({
-  branchId: z.coerce.number().min(1, 'Vui lòng chọn Chi nhánh'),
-  roomId: z.coerce.number().min(1, 'Vui lòng chọn Phòng'),
-  userId: z.coerce.number().min(1, 'Vui lòng chọn Khách thuê'),
-  deposit: z.coerce.number().min(0, 'Tiền cọc phải là số dương'),
+  branchId: z.preprocess((val) => Number(val), z.number().min(1, 'Vui lòng chọn Chi nhánh')),
+  roomId: z.preprocess((val) => Number(val), z.number().min(1, 'Vui lòng chọn Phòng')),
+  userId: z.preprocess((val) => Number(val), z.number().min(1, 'Vui lòng chọn Khách thuê')),
+  deposit: z.preprocess((val) => Number(val), z.number().min(0, 'Tiền cọc phải từ 0đ')),
   startDate: z.string().min(1, 'Chọn ngày bắt đầu'),
-  endDate: z.string().min(1, 'Chọn ngày kết thúc'),
+  endDate: z.string().optional(), // EndDate có thể optional trong form nếu muốn
 });
 
 type ContractFormValues = z.infer<typeof contractSchema>;
@@ -35,7 +36,7 @@ interface ExtendedUser extends User {
 }
 
 export default function ContractModal({ isOpen, onClose, onSubmit, initialData }: ContractModalProps) {
-  const { user: currentUser } = useAuth(); // Lấy thông tin Admin hiện tại
+  const { user: currentUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scanImage, setScanImage] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -46,29 +47,33 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
   const [isLoadingData, setIsLoadingData] = useState(false);
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<ContractFormValues>({
-    resolver: zodResolver(contractSchema) as any,
+    resolver: zodResolver(contractSchema) as Resolver<ContractFormValues>,
+    defaultValues: {
+      branchId: 0,
+      roomId: 0,
+      userId: 0,
+      deposit: 0,
+      startDate: '',
+      endDate: '',
+    }
   });
 
   const selectedBranchId = watch('branchId');
   const selectedUserId = watch('userId');
 
-  const selectedUserStatus = useMemo(() => {
-    return users.find(u => u.id === Number(selectedUserId));
-  }, [selectedUserId, users]);
-
+  // 2. TẢI DỮ LIỆU THÔNG MINH
   useEffect(() => {
     if (isOpen) {
       const fetchData = async () => {
         setIsLoadingData(true);
         try {
-          // CHUẨN ĐA CHI NHÁNH: Admin cơ sở chỉ lấy dữ liệu của chính mình
           const branchIdFilter = currentUser?.branchId || undefined;
 
           const [branchData, roomData, userData, contractData] = await Promise.all([
             branchApi.getAll(),
-            roomApi.getAll(branchIdFilter), // Lọc phòng theo chi nhánh
-            userApi.getAll(branchIdFilter), // Lọc cư dân theo chi nhánh
-            contractApi.getAll(undefined, branchIdFilter) // Lọc hợp đồng cũ để kiểm tra trùng lặp
+            roomApi.getAll(branchIdFilter),
+            userApi.getAll(branchIdFilter),
+            contractApi.getAll(undefined, branchIdFilter)
           ]);
 
           setBranches(branchData);
@@ -87,12 +92,11 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
           
           setUsers(processedUsers);
 
-          // Tự động điền branchId nếu là Admin cơ sở
           if (currentUser?.branchId) {
-            setValue('branchId', currentUser.branchId);
+            setValue('branchId', Number(currentUser.branchId));
           }
         } catch (error) {
-          console.error("Lỗi tải dữ liệu đa chi nhánh:", error);
+          console.error("Lỗi đồng bộ dữ liệu modal:", error);
         } finally {
           setIsLoadingData(false);
         }
@@ -104,32 +108,42 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
         setValue('roomId', initialData.roomId);
         setValue('userId', initialData.userId);
         setValue('deposit', Number(initialData.deposit));
-        setValue('startDate', initialData.startDate.split('T')[0]);
-        setValue('endDate', initialData.endDate.split('T')[0]);
+        
+        // 👇 SỬA LỖI Ở ĐÂY: Kiểm tra tồn tại trước khi split
+        setValue('startDate', initialData.startDate ? initialData.startDate.split('T')[0] : '');
+        setValue('endDate', initialData.endDate ? initialData.endDate.split('T')[0] : '');
+        
         setScanImage(initialData.scanImage || null);
-      } else if (!currentUser?.branchId) {
-        reset();
-        setScanImage(null);
       }
+    } else {
+      reset();
+      setScanImage(null);
+      setSelectedFile(null);
     }
   }, [isOpen, initialData, reset, setValue, currentUser]);
+
+  // ... (Phần còn lại giữ nguyên không đổi) ...
+
+  const filteredUsers = useMemo(() => {
+    if (!selectedBranchId) return [];
+    return users.filter(user => 
+      !user.branchId || user.branchId === Number(selectedBranchId)
+    );
+  }, [users, selectedBranchId]);
 
   const filteredRooms = useMemo(() => {
     if (!selectedBranchId) return [];
     return allRooms.filter(room => {
-      const belongToBranch = room.branchId === Number(selectedBranchId);
-      const isCurrentRoom = initialData && room.id === initialData.roomId;
-      const isAvailable = room.status === 'AVAILABLE'; 
-      return belongToBranch && (isAvailable || isCurrentRoom);
+      const isAvailable = room.status === 'AVAILABLE' || (initialData && room.id === initialData.roomId); 
+      return room.branchId === Number(selectedBranchId) && isAvailable;
     });
   }, [allRooms, selectedBranchId, initialData]);
 
-  const onFormSubmit: SubmitHandler<ContractFormValues> = async (data) => {
-    if (selectedUserStatus?.hasActiveContract && !initialData) {
-      const confirmAdd = confirm(`Khách hàng ${selectedUserStatus.fullName} đang có một hợp đồng ACTIVE. Tiếp tục tạo thêm hợp đồng mới?`);
-      if (!confirmAdd) return;
-    }
+  const selectedUserStatus = useMemo(() => {
+    return users.find(u => u.id === Number(selectedUserId));
+  }, [selectedUserId, users]);
 
+  const onFormSubmit: SubmitHandler<ContractFormValues> = async (data) => {
     setIsSubmitting(true);
     try {
       let uploadedUrl = initialData?.scanImage || null;
@@ -138,17 +152,21 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
         uploadedUrl = res.url || res.secure_url || res;
       }
 
-      const payload = {
-        ...data,
+      const finalPayload = {
+        branchId: Number(data.branchId),
+        roomId: Number(data.roomId),
+        userId: Number(data.userId),
+        deposit: Number(data.deposit),
         startDate: new Date(data.startDate).toISOString(),
-        endDate: new Date(data.endDate).toISOString(),
+        // Check endDate có giá trị không trước khi convert
+        endDate: data.endDate ? new Date(data.endDate).toISOString() : undefined,
         scanImage: uploadedUrl
       };
 
-      await onSubmit(payload);
+      await onSubmit(finalPayload);
       onClose();
-    } catch (error) {
-      alert('Lỗi khi lưu hợp đồng đa chi nhánh.');
+    } catch (error: any) {
+      alert('Lỗi: ' + (error.response?.data?.message || 'Không thể thiết lập hợp đồng.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -157,119 +175,129 @@ export default function ContractModal({ isOpen, onClose, onSubmit, initialData }
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-200">
-        <div className="px-8 py-6 border-b flex justify-between items-center bg-slate-50/50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 text-slate-900">
+      <div className="bg-white rounded-[3rem] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-200">
+        
+        {/* Header */}
+        <div className="px-10 py-8 border-b flex justify-between items-center bg-slate-50/50">
           <div>
-            <h2 className="text-xl font-black text-slate-900 uppercase tracking-tighter">
-              {initialData ? 'Hiệu chỉnh Hợp đồng' : 'Thiết lập Hợp đồng mới'}
-            </h2>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">SmartHouse AI Management System</p>
+            <h2 className="text-2xl font-black uppercase tracking-tighter italic leading-none">Thiết lập hợp đồng AI</h2>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SmartHouse Security Verified</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-red-50 hover:text-red-500 rounded-xl transition-all">
-            <X size={24} />
-          </button>
+          <button onClick={onClose} className="p-3 hover:bg-red-50 hover:text-red-500 rounded-2xl transition-all"><X size={24} /></button>
         </div>
 
-        <div className="p-8 overflow-y-auto">
+        <div className="p-10 overflow-y-auto custom-scrollbar">
           {isLoadingData ? (
-             <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" size={40} /></div>
+             <div className="flex flex-col items-center justify-center py-20 gap-4">
+               <Loader2 className="animate-spin text-blue-600" size={48} />
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Đồng bộ dữ liệu cơ sở...</p>
+             </div>
           ) : (
-            <form id="contract-form" onSubmit={handleSubmit(onFormSubmit)} className="space-y-8">
+            <form id="contract-form" onSubmit={handleSubmit(onFormSubmit)} className="space-y-10">
               
-              {/* CHỌN CHI NHÁNH - Khóa nếu là Admin cơ sở */}
-              <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                   <MapPin size={14} className="text-blue-500" /> Lựa chọn Cơ sở vận hành
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
+                   <MapPin size={14} className="text-blue-500" /> Chi nhánh vận hành
                 </label>
                 <select 
                   {...register('branchId')} 
-                  disabled={!!currentUser?.branchId}
-                  className="w-full px-4 py-3 bg-slate-50 border-transparent rounded-xl text-xs font-bold uppercase outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-60"
+                  disabled={!!currentUser?.branchId} 
+                  className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-xs font-black uppercase outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all disabled:opacity-60"
                 >
-                  <option value="">-- Chọn chi nhánh hệ thống --</option>
+                  <option value="0">-- CHỌN CƠ SỞ --</option>
                   {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
-                {errors.branchId && <p className="text-red-500 text-[10px] font-bold mt-1 uppercase italic">{errors.branchId.message}</p>}
+                {errors.branchId && <p className="text-red-500 text-[9px] font-black px-1 uppercase">{errors.branchId.message}</p>}
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                    <Home size={14} className="text-emerald-500" /> Phòng trống khả dụng
+              <div className="grid grid-cols-2 gap-8">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
+                    <Home size={14} className="text-emerald-500" /> Phòng trống
                   </label>
-                  <select {...register('roomId')} disabled={!selectedBranchId} className="w-full px-4 py-3 bg-slate-50 border-transparent rounded-xl text-xs font-bold uppercase outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50">
-                    <option value="">-- Chọn mã phòng --</option>
-                    {filteredRooms.map(room => (
-                        <option key={room.id} value={room.id}>{room.roomNumber} - {Number(room.price).toLocaleString()}đ</option>
-                      ))
-                    }
+                  <select {...register('roomId')} disabled={!selectedBranchId} className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-xs font-black uppercase outline-none focus:bg-white focus:border-emerald-500 transition-all">
+                    <option value="0">-- CHỌN PHÒNG --</option>
+                    {filteredRooms.map(room => (<option key={room.id} value={room.id}>PHÒNG {room.roomNumber}</option>))}
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                    <UserIcon size={14} className="text-violet-500" /> Đối tác Cư dân
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-1">
+                    <UserIcon size={14} className="text-violet-500" /> Khách thuê
                   </label>
-                  <select {...register('userId')} className="w-full px-4 py-3 bg-slate-50 border-transparent rounded-xl text-xs font-bold uppercase outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all">
-                    <option value="">-- Chọn khách hàng --</option>
-                    {users.map(user => (
-                      <option key={user.id} value={user.id}>
-                        {user.fullName} {user.hasActiveContract ? "(Đang lưu trú)" : ""}
+                  <select {...register('userId')} disabled={!selectedBranchId} className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-xs font-black uppercase outline-none focus:bg-white focus:border-violet-500 transition-all">
+                    <option value="0">-- CHỌN CƯ DÂN --</option>
+                    {filteredUsers.map(user => (
+                      <option key={user.id} value={user.id} className={user.hasActiveContract ? 'text-slate-300' : ''}>
+                        {user.fullName} {user.hasActiveContract ? '(ĐÃ CÓ HĐ)' : ''}
                       </option>
                     ))}
                   </select>
+                  {selectedUserStatus?.hasActiveContract && (
+                    <div className="flex items-center gap-2 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                      <AlertTriangle size={12} className="text-amber-600" />
+                      <p className="text-[8px] font-black text-amber-700 uppercase italic">Cư dân này đang có hợp đồng hiệu lực</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {selectedUserStatus?.hasActiveContract && !initialData && (
-                <div className="bg-orange-50 border border-orange-100 p-4 rounded-2xl flex items-start gap-3 animate-pulse">
-                  <AlertTriangle className="text-orange-500 shrink-0" size={20} />
-                  <p className="text-[10px] text-orange-700 font-bold uppercase leading-relaxed tracking-tight">
-                    Cư dân <b>{selectedUserStatus.fullName}</b> đang có hợp đồng hoạt động tại chi nhánh. Vui lòng xác nhận trước khi ký thêm phòng.
-                  </p>
+              <div className="grid grid-cols-2 gap-8">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Ngày bắt đầu</label>
+                  <input type="date" {...register('startDate')} className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-xs font-black outline-none focus:bg-white focus:border-blue-500 transition-all" />
                 </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Thời điểm nhận phòng</label>
-                  <input type="date" {...register('startDate')} className="w-full px-4 py-3 bg-slate-50 border-transparent rounded-xl text-xs font-bold uppercase outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Thời điểm bàn giao</label>
-                  <input type="date" {...register('endDate')} className="w-full px-4 py-3 bg-slate-50 border-transparent rounded-xl text-xs font-bold uppercase outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all" />
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Ngày kết thúc</label>
+                  <input type="date" {...register('endDate')} className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-xs font-black outline-none focus:bg-white focus:border-blue-500 transition-all" />
                 </div>
               </div>
 
-              <div className="p-6 bg-blue-50/30 rounded-[2rem] border-2 border-dashed border-blue-100">
-                <label className="block text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 text-center">Bản quét Hợp đồng thực tế (Scan/Photo)</label>
-                <div className="flex flex-col items-center justify-center relative min-h-[120px] cursor-pointer">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Tiền đặt cọc (VNĐ)</label>
+                <div className="relative">
+                  <input type="number" {...register('deposit')} placeholder="0" className="w-full px-6 py-4 bg-slate-50 border-2 border-transparent rounded-2xl text-xs font-black outline-none focus:bg-white focus:border-blue-500 transition-all" />
+                  <span className="absolute right-6 top-4 text-[10px] font-black text-slate-300 uppercase">đ</span>
+                </div>
+              </div>
+
+              <div className="p-8 bg-slate-50 rounded-[2.5rem] border-4 border-dashed border-slate-200 hover:border-blue-200 transition-all group">
+                <div className="flex flex-col items-center justify-center relative min-h-[140px] cursor-pointer">
                   {scanImage ? (
-                     <img src={scanImage} alt="Scan" className="h-32 w-full object-contain rounded-xl" />
+                    <div className="relative w-full h-40">
+                      <img src={scanImage} alt="Scan" className="w-full h-full object-contain rounded-xl" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-xl transition-all">
+                        <UploadCloud className="text-white" size={32} />
+                      </div>
+                    </div>
                   ) : (
                     <>
-                      <UploadCloud size={32} className="text-blue-300 mb-2" />
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tải lên hồ sơ lưu trữ</span>
+                      <UploadCloud size={40} className="text-slate-300 mb-3 group-hover:text-blue-400 transition-colors" />
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tải lên bản quét hợp đồng giấy</span>
+                      <p className="text-[8px] text-slate-300 mt-2 font-bold uppercase italic">Hỗ trợ JPG, PNG, PDF (Max 5MB)</p>
                     </>
                   )}
-                  <input type="file" accept="image/*" onChange={(e) => {
-                    if (e.target.files?.[0]) {
-                      setSelectedFile(e.target.files[0]);
-                      setScanImage(URL.createObjectURL(e.target.files[0]));
-                    }
-                  }} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  <input type="file" accept="image/*" onChange={(e) => { if (e.target.files?.[0]) { setSelectedFile(e.target.files[0]); setScanImage(URL.createObjectURL(e.target.files[0])); } }} className="absolute inset-0 opacity-0 cursor-pointer" />
                 </div>
               </div>
             </form>
           )}
         </div>
 
-        <div className="p-8 border-t flex justify-end gap-4 bg-slate-50/50">
-          <button onClick={onClose} className="px-6 py-3 text-slate-400 hover:text-slate-900 font-black text-[10px] uppercase tracking-widest transition-all">Hủy bỏ thao tác</button>
-          <button form="contract-form" type="submit" disabled={isSubmitting} className="px-10 py-3 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 shadow-xl shadow-slate-200 transition-all flex items-center gap-3 disabled:opacity-50">
-            {isSubmitting && <Loader2 className="animate-spin" size={16} />}
-            {initialData ? 'Cập nhật hồ sơ' : 'Xác thực & Ký hợp đồng'}
+        <div className="p-10 border-t flex justify-end gap-6 bg-slate-50/50">
+          <button onClick={onClose} className="px-8 py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition-all">Hủy bỏ</button>
+          <button 
+            form="contract-form" 
+            type="submit" 
+            disabled={isSubmitting} 
+            className="px-12 py-4 bg-slate-900 text-white rounded-[1.5rem] font-black text-[10px] uppercase tracking-[0.2em] hover:bg-blue-600 transition-all flex items-center gap-3 disabled:opacity-50 shadow-2xl shadow-blue-200 active:scale-95"
+          >
+            {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <div className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_10px_#4ade80]"></div>}
+            Xác thực & Ký hợp đồng
           </button>
         </div>
       </div>

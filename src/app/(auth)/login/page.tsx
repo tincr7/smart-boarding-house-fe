@@ -5,12 +5,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+// 👇 1. Import thêm useSearchParams
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, LogIn, AlertCircle } from 'lucide-react';
 import { authApi } from '@/services/auth.api';
 import { useAuth } from '@/context/AuthContext';
 
-// Schema validation
 const loginSchema = z.object({
   email: z.string().email({ message: 'Email không hợp lệ' }),
   password: z.string().min(1, { message: 'Vui lòng nhập mật khẩu' }),
@@ -20,6 +20,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams(); // 👇 2. Hook lấy tham số URL
   const { refreshProfile } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -29,39 +30,39 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: '',
-      password: '',
-    },
+    defaultValues: { email: '', password: '' },
   });
 
   const onSubmit = async (data: LoginFormValues) => {
-    setServerError(null); // Xóa lỗi cũ nếu có
+    setServerError(null);
     try {
-      // 1. Gọi API đăng nhập (Token được lưu vào Cookie trong hàm authApi.login)
+      // 1. Gọi API Login
       await authApi.login(data);
       
-      // 2. Lấy thông tin User để kiểm tra Role
-      // (Lúc này axios interceptor đã tự động gắn token từ cookie vào header)
+      // 2. Lấy thông tin User & Cập nhật Context
       const currentUser = await authApi.getProfile(); 
-      
-      // 3. Cập nhật AuthContext toàn cục ngay lập tức
       await refreshProfile(); 
       
-      // 4. Phân quyền chuyển hướng
-      if (currentUser.role === 'ADMIN') {
-        router.replace('/dashboard'); // Dùng replace để không back lại được
+      // 👇 3. LOGIC ĐIỀU HƯỚNG THÔNG MINH (QUAN TRỌNG)
+      
+      // Kiểm tra xem có trang nào user đang muốn vào trước đó không?
+      const callbackUrl = searchParams.get('callbackUrl');
+
+      if (callbackUrl) {
+        // Nếu có nơi cần về -> Về thẳng đó (Ví dụ: Về lại trang đặt phòng)
+        router.push(callbackUrl);
       } else {
-        router.replace('/rooms');     // Tenant vào thẳng trang phòng
+        // Nếu không -> Phân quyền như cũ
+        if (currentUser.role === 'ADMIN') {
+          router.replace('/dashboard');
+        } else {
+          router.replace('/my-room'); // Nên về "Phòng của tôi" hoặc trang chủ "/"
+        }
       }
       
     } catch (error: any) {
       console.error("Login Error:", error);
-      
-      // Lấy thông báo lỗi từ Backend trả về (nếu có)
-      const msg = error?.response?.data?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại email hoặc mật khẩu.';
-      
-      // Hiển thị lỗi ra màn hình (xử lý trường hợp message là mảng hoặc chuỗi)
+      const msg = error?.response?.data?.message || 'Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.';
       setServerError(Array.isArray(msg) ? msg.join(', ') : msg);
     }
   };
@@ -78,7 +79,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Hiển thị thông báo lỗi từ Server */}
         {serverError && (
           <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg flex items-start gap-2 text-sm animate-pulse">
             <AlertCircle size={18} className="shrink-0 mt-0.5" />
@@ -88,46 +88,32 @@ export default function LoginPage() {
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="space-y-4">
-            {/* Email Field */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
-                Email
-              </label>
+              <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">Email</label>
               <input
                 id="email"
                 type="email"
                 {...register('email')}
-                className={`block w-full px-3 py-2 border rounded-lg outline-none text-slate-900 bg-white transition-all ${
-                  errors.email 
-                    ? 'border-red-500 focus:ring-red-500 focus:border-red-500' 
-                    : 'border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                className={`block w-full px-3 py-2 border rounded-lg outline-none transition-all ${
+                  errors.email ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
                 }`}
                 placeholder="admin@example.com"
               />
-              {errors.email && (
-                <p className="mt-1 text-xs text-red-500 font-medium">{errors.email.message}</p>
-              )}
+              {errors.email && <p className="mt-1 text-xs text-red-500 font-medium">{errors.email.message}</p>}
             </div>
 
-            {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
-                Mật khẩu
-              </label>
+              <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">Mật khẩu</label>
               <input
                 id="password"
                 type="password"
                 {...register('password')}
-                className={`block w-full px-3 py-2 border rounded-lg outline-none text-slate-900 bg-white transition-all ${
-                  errors.password 
-                    ? 'border-red-500 focus:ring-red-500 focus:border-red-500' 
-                    : 'border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                className={`block w-full px-3 py-2 border rounded-lg outline-none transition-all ${
+                  errors.password ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
                 }`}
                 placeholder="••••••"
               />
-              {errors.password && (
-                <p className="mt-1 text-xs text-red-500 font-medium">{errors.password.message}</p>
-              )}
+              {errors.password && <p className="mt-1 text-xs text-red-500 font-medium">{errors.password.message}</p>}
             </div>
           </div>
 

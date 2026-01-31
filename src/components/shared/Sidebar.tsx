@@ -4,16 +4,9 @@ import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
-  LayoutDashboard, 
-  Home, 
-  Users, 
-  LogOut, 
-  FileText, 
-  Receipt, 
-  UserCog,
-  ArchiveRestore,
-  ShieldCheck,
-  Building2 // Thêm icon để hiển thị chi nhánh
+  LayoutDashboard, Users, LogOut, FileText, 
+  Receipt, ArchiveRestore, ShieldCheck, 
+  Building2, Globe, ChevronRight
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -22,83 +15,83 @@ export default function Sidebar() {
 
   const allMenuItems = [
     { icon: LayoutDashboard, label: 'Tổng quan', href: '/dashboard', adminOnly: true },
-    { icon: Home, label: 'Phòng trọ', href: '/rooms', adminOnly: false },
-    { icon: Users, label: 'Cư dân', href: '/tenants', adminOnly: true },
-    { icon: FileText, label: 'Hợp đồng', href: '/contracts', adminOnly: false },
-    { icon: Receipt, label: 'Hóa đơn', href: '/invoices', adminOnly: false },
-    { icon: UserCog, label: 'Tài khoản', href: '/profile', adminOnly: false },
-    { icon: ArchiveRestore, label: 'Thùng rác', href: '/recycle-bin', adminOnly: true }, 
+    { icon: Building2, label: 'Chi nhánh', href: '/dashboard/branches', adminOnly: false },
+    { icon: Users, label: 'Cư dân', href: '/dashboard/tenants', adminOnly: true },
+    { icon: FileText, label: 'Hợp đồng', href: '/dashboard/contracts', adminOnly: false },
+    { icon: Receipt, label: 'Hóa đơn', href: '/dashboard/invoices', adminOnly: false },
+    { icon: ArchiveRestore, label: 'Thùng rác', href: '/dashboard/recycle-bin', adminOnly: true }, 
   ];
 
-  const visibleMenuItems = allMenuItems.filter(item => 
-    isAdmin ? true : !item.adminOnly
-  );
+  const visibleMenuItems = allMenuItems.filter(item => isAdmin ? true : !item.adminOnly);
 
   return (
-    <aside className="w-64 bg-white border-r border-slate-200 h-screen fixed left-0 top-0 flex flex-col z-[50]">
-      {/* Brand Logo & User Info */}
-      <div className="p-8 border-b border-slate-50 bg-slate-50/30">
-        <Link href={isAdmin ? "/dashboard" : "/rooms"}>
-          <div className="flex items-center gap-2 mb-6 group cursor-pointer">
-            <div className="p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-100 group-hover:scale-110 transition-transform">
-              <Home className="text-white fill-white" size={20} />
-            </div>
-            <h1 className="text-xl font-black text-slate-900 tracking-tighter uppercase italic">SmartHouse</h1>
+    <div className="h-full flex flex-col bg-white border-r border-slate-200 shadow-2xl shadow-slate-200/50">
+      
+      {/* 1. BRAND & IDENTITY */}
+      <div className="p-8 border-b border-slate-50">
+        <div className="flex items-center gap-3 mb-8 group">
+          <div className="p-2.5 bg-blue-600 rounded-2xl shadow-lg shadow-blue-200 group-hover:rotate-12 transition-all duration-300">
+            <Building2 className="text-white" size={22} />
           </div>
-        </Link>
+          <div>
+            <h1 className="text-xl font-black text-slate-900 tracking-tighter uppercase italic leading-none">SmartHouse</h1>
+            <span className="text-[8px] font-black text-blue-500 uppercase tracking-[0.3em]">Management</span>
+          </div>
+        </div>
         
-        {user ? (
-          <div className="space-y-3">
-            <div className="flex flex-col">
-              <span className="text-[9px] text-slate-400 font-black uppercase tracking-[0.2em] mb-1 italic">Vận hành bởi</span>
-              <p className="text-xs font-black text-slate-800 truncate uppercase tracking-tight flex items-center gap-1.5">
+        {user && (
+          <div className="p-4 bg-slate-50 rounded-[1.5rem] border border-slate-100 relative overflow-hidden group">
+            <div className="relative z-10">
+              <span className="text-[8px] text-slate-400 font-black uppercase tracking-widest block mb-1">Cán bộ vận hành</span>
+              <p className="text-xs font-black text-slate-800 uppercase flex items-center gap-1.5">
                 <ShieldCheck size={14} className="text-blue-500" /> {user.fullName}
               </p>
             </div>
-            
-            {/* HIỂN THỊ CHI NHÁNH ĐANG QUẢN LÝ (Nếu có) */}
-            {user.branchId && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 rounded-xl text-white shadow-sm">
-                <Building2 size={12} className="text-blue-400" />
-                <span className="text-[9px] font-black uppercase tracking-widest">Cơ sở {user.branchId}</span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="h-3 w-20 bg-slate-100 rounded animate-pulse" />
-            <div className="h-8 w-full bg-slate-100 rounded-xl animate-pulse" />
+            <div className="absolute -right-2 -bottom-2 opacity-5 group-hover:scale-110 transition-transform">
+              <ShieldCheck size={60} />
+            </div>
           </div>
         )}
       </div>
 
-      {/* Navigation Menu */}
+      {/* 2. MODE SWITCHER (LỐI THOÁT RA TRANG PUBLIC) */}
+      <div className="px-6 pt-6">
+        <Link href="/" className="flex items-center justify-between p-4 bg-blue-50/50 hover:bg-blue-600 hover:text-white rounded-2xl border border-blue-100 group transition-all duration-300">
+           <div className="flex items-center gap-3">
+              <Globe size={18} className="text-blue-600 group-hover:text-white" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Trang chủ Public</span>
+           </div>
+           <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+        </Link>
+      </div>
+
+      {/* 3. MAIN NAVIGATION */}
       <nav className="flex-1 p-6 space-y-2 overflow-y-auto scrollbar-hide">
+        <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 px-5">Hệ thống quản trị</p>
         {visibleMenuItems.map((item) => {
-          const isActive = pathname.startsWith(item.href);
-          
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
-              key={item.href}
+              key={item.href} 
               href={item.href}
               className={`flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-black text-[10px] uppercase tracking-[0.15em] relative group ${
                 isActive
-                  ? 'bg-slate-900 text-white shadow-xl shadow-slate-200'
+                  ? 'bg-slate-900 text-white shadow-xl shadow-slate-400/20'
                   : 'text-slate-400 hover:bg-slate-50 hover:text-blue-600'
               }`}
             >
-              {isActive && (
-                <span className="absolute left-0 w-1 h-6 bg-blue-500 rounded-r-full" />
-              )}
               <item.icon size={18} strokeWidth={isActive ? 3 : 2} className={isActive ? 'text-blue-400' : 'group-hover:scale-110 transition-transform'} />
               {item.label}
+              {isActive && (
+                <div className="ml-auto w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
+              )}
             </Link>
           );
         })}
       </nav>
 
-      {/* Logout Footer */}
-      <div className="p-6 border-t border-slate-50 bg-slate-50/20">
+      {/* 4. FOOTER ACTIONS */}
+      <div className="p-6 border-t border-slate-50 bg-slate-50/30 space-y-2">
         <button 
           onClick={logout} 
           className="flex items-center gap-4 px-5 py-4 w-full text-red-500 hover:bg-red-50 rounded-2xl transition-all font-black text-[10px] uppercase tracking-widest group"
@@ -107,6 +100,6 @@ export default function Sidebar() {
           Đăng xuất
         </button>
       </div>
-    </aside>
+    </div>
   );
 }
