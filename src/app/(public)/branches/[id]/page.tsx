@@ -7,7 +7,8 @@ import { branchApi, Branch } from '@/services/branch.api';
 import Breadcrumbs from '@/components/shared/Breadcrumbs'; 
 import { 
   Loader2, Search, Maximize, ArrowLeft, 
-  MapPin, Home, Building2, SlidersHorizontal
+  MapPin, Home, Building2, SlidersHorizontal,
+  ArrowRight
 } from 'lucide-react';
 
 interface PageProps {
@@ -179,6 +180,3 @@ export default function PublicBranchDetailPage({ params }: PageProps) {
     </div>
   );
 }
-
-// Thêm Icon ArrowRight cho thẩm mỹ
-import { ArrowRight } from 'lucide-react';

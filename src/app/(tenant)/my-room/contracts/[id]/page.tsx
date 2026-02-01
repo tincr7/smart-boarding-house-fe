@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Contract, contractApi } from '@/services/contract.api';
 import { 
   Loader2, ArrowLeft, FileText, ShieldCheck, Building2, MapPin,
-  Paperclip, Maximize, ImageOff // Thêm icon mới
+  Paperclip, Maximize, ImageOff 
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { format } from 'date-fns';
@@ -28,16 +28,25 @@ export default function TenantContractDetail({ params }: PageProps) {
     const fetchDetail = async () => {
       try {
         setLoading(true);
+        console.log("🚀 [DEBUG] Bắt đầu gọi API lấy chi tiết HĐ ID:", id);
+
         const data = await contractApi.getDetail(id);
         
+        // --- KHU VỰC DEBUG ---
+        console.log("📦 [DEBUG] Dữ liệu API trả về:", data);
+        console.log("🖼️ [DEBUG] Giá trị scanImage:", (data as any).scanImage);
+        console.log("🖼️ [DEBUG] Giá trị image (kiểm tra tên khác):", (data as any).image);
+        // ---------------------
+
         // Bảo mật: Nếu hợp đồng không phải của user -> Chặn
         if (user && data.userId !== user.id) {
+            console.warn("⛔ [DEBUG] User ID không khớp, chặn truy cập");
             router.push('/my-room/contracts');
             return;
         }
         setContract(data);
       } catch (error) { 
-        console.error("Lỗi tải chi tiết hợp đồng:", error); 
+        console.error("❌ [DEBUG] Lỗi tải chi tiết hợp đồng:", error); 
       } finally { 
         setLoading(false); 
       }
@@ -58,6 +67,9 @@ export default function TenantContractDetail({ params }: PageProps) {
       <button onClick={() => router.push('/my-room/contracts')} className="text-blue-600 font-bold text-xs uppercase underline">Quay lại danh sách</button>
     </div>
   );
+
+  // Ép kiểu để lấy scanImage an toàn cho việc hiển thị bên dưới
+  const contractImage = (contract as any).scanImage || (contract as any).image;
 
   return (
     <div className="p-6 md:p-8 max-w-4xl mx-auto min-h-screen bg-slate-50 selection:bg-blue-100">
@@ -150,19 +162,19 @@ export default function TenantContractDetail({ params }: PageProps) {
                </h3>
 
                <div className="bg-slate-50 rounded-[2rem] border border-slate-100 overflow-hidden relative group min-h-[200px] flex items-center justify-center p-4">
-                  {(contract as any).scanImage ? (
+                  {contractImage ? (
                       <div className="w-full relative group/img">
                           <img 
-                              src={(contract as any).scanImage} 
+                              src={contractImage} 
                               alt="Contract Scan" 
                               className="w-full h-auto object-contain rounded-xl shadow-sm cursor-zoom-in hover:shadow-xl transition-all duration-500"
-                              onClick={() => window.open((contract as any).scanImage, '_blank')}
+                              onClick={() => window.open(contractImage, '_blank')}
                           />
                           
                           {/* Nút mở rộng xem full màn hình */}
                           <div className="absolute top-4 right-4 opacity-0 group-hover/img:opacity-100 transition-opacity">
                               <a 
-                                  href={(contract as any).scanImage} 
+                                  href={contractImage} 
                                   target="_blank" 
                                   className="p-3 bg-white text-slate-900 rounded-xl shadow-lg hover:bg-slate-900 hover:text-white transition-all flex"
                                   title="Xem bản gốc"

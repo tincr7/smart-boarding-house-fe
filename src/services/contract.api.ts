@@ -1,22 +1,31 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-const axiosInstance = axios.create({ baseURL: API_URL });
+const axiosInstance = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
 axiosInstance.interceptors.request.use((config) => {
   const token = Cookies.get('access_token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
+// 👇 2. CẬP NHẬT INTERFACE ĐẦY ĐỦ
 export interface Contract {
   id: number;
   startDate: string;
   endDate?: string;
   deposit: number | string;
-  status: 'ACTIVE' | 'TERMINATED' | 'EXPIRED';
-  scanImage?: string;
+    status: 'ACTIVE' | 'TERMINATED' | 'EXPIRED' | 'PENDING';
+    scanImage?: string;
+  
   userId: number;
   roomId: number;
   branchId: number;
@@ -55,10 +64,13 @@ export interface CreateContractDto {
 }
 
 export const contractApi = {
-  // 1. Lấy danh sách chính (Active + Terminated)
+  // 1. Lấy danh sách (User thường sẽ tự động được Backend lọc theo Token)
   getAll: async (userId?: number, branchId?: number) => {
     const response = await axiosInstance.get<Contract[]>('/contracts', {
-      params: { userId, branchId: branchId ? Number(branchId) : undefined }
+      params: { 
+        userId, 
+        branchId: branchId ? Number(branchId) : undefined 
+      }
     });
     return response.data;
   },
@@ -88,19 +100,17 @@ export const contractApi = {
     return response.data;
   },
 
-  // 5. Thanh lý (Nghiệp vụ trả phòng)
+  // 5. Thanh lý
   terminate: async (id: number) => {
     const response = await axiosInstance.patch(`/contracts/${id}/terminate`);
     return response.data;
   },
 
-  // 6. Xóa mềm (Đưa vào thùng rác)
+  // 6. Xóa mềm
   delete: async (id: number) => {
     const response = await axiosInstance.delete(`/contracts/${id}`);
     return response.data;
   },
-
-  // --- CÁC HÀM CÒN THIẾU ĐỂ FIX LỖI ---
 
   // 7. Lấy danh sách thùng rác
   getDeleted: async (branchId?: number) => {
@@ -110,7 +120,7 @@ export const contractApi = {
     return response.data;
   },
 
-  // 8. Khôi phục từ thùng rác
+  // 8. Khôi phục
   restore: async (id: number) => {
     const response = await axiosInstance.patch(`/contracts/${id}/restore`);
     return response.data;

@@ -5,17 +5,19 @@ import { useAuth } from '@/context/AuthContext';
 import { contractApi } from '@/services/contract.api';
 import { invoiceApi } from '@/services/invoice.api';
 import { 
-  Home, FileText, Receipt, ShieldCheck, 
+  Home, Receipt, ShieldCheck, 
   MapPin, Calendar, Wallet, ArrowRight, Loader2,
   Zap, Droplets, Info
 } from 'lucide-react';
 import Link from 'next/link';
-import Breadcrumbs from '@/components/shared/Breadcrumbs'; // Import Breadcrumbs
+import Breadcrumbs from '@/components/shared/Breadcrumbs';
 
 export default function MyRoomDashboard() {
   const { user } = useAuth();
   const [myContract, setMyContract] = useState<any>(null);
   const [unpaidInvoices, setUnpaidInvoices] = useState<any[]>([]);
+  
+  const [currentMetrics, setCurrentMetrics] = useState({ electric: 0, water: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,17 +25,39 @@ export default function MyRoomDashboard() {
       if (!user) return;
       try {
         setLoading(true);
-        // 1. Lấy hợp đồng đang hiệu lực của tôi
+        
+        // 1. Lấy hợp đồng Active
         const allContracts = await contractApi.getAll();
         const active = allContracts.find((c: any) => c.userId === user.id && c.status === 'ACTIVE');
         setMyContract(active);
 
-        // 2. Lấy hóa đơn chưa thanh toán
+        // 2. Lấy danh sách hóa đơn
         const allInvoices = await invoiceApi.getAll();
-        const unpaid = allInvoices.filter((inv: any) => 
-          inv.roomId === active?.roomId && inv.status !== 'PAID' && !inv.deletedAt
-        );
-        setUnpaidInvoices(unpaid);
+
+        if (active) {
+          // Lọc hóa đơn của phòng này
+          const myInvoices = allInvoices.filter((inv: any) => 
+             inv.roomId === active.roomId && !inv.deletedAt
+          );
+
+          // a. Lọc hóa đơn chưa thanh toán
+          const unpaid = myInvoices.filter((inv: any) => inv.status !== 'PAID');
+          setUnpaidInvoices(unpaid);
+
+          // b. Lấy chỉ số điện nước mới nhất
+          if (myInvoices.length > 0) {
+             // Sort giảm dần theo ID để lấy cái mới nhất
+             const sortedInvoices = myInvoices.sort((a: any, b: any) => b.id - a.id);
+             
+             // 🔥 FIX CHÍNH XÁC: Dùng tên trường từ JSON bạn gửi (newElectricity, newWater)
+             const latestInvoice: any = sortedInvoices[0];
+             
+             setCurrentMetrics({
+                electric: latestInvoice.newElectricity || 0, 
+                water: latestInvoice.newWater || 0
+             });
+          }
+        }
       } catch (error) {
         console.error("Lỗi tải dữ liệu cá nhân:", error);
       } finally {
@@ -54,16 +78,11 @@ export default function MyRoomDashboard() {
   return (
     <div className="p-6 md:p-10 space-y-8 selection:bg-blue-100">
       
-      {/* TÍCH HỢP BREADCRUMBS */}
       <div className="inline-flex items-center px-4 py-2 bg-white rounded-xl border border-slate-100 shadow-sm">
-        <Breadcrumbs 
-          items={[
-            { label: 'My Room' }
-          ]} 
-        />
+        <Breadcrumbs items={[{ label: 'My Room' }]} />
       </div>
 
-      {/* 1. WELCOME BANNER */}
+      {/* BANNER */}
       <div className="bg-slate-900 rounded-[3rem] p-8 md:p-14 text-white relative overflow-hidden shadow-2xl shadow-slate-200">
          <div className="absolute top-0 right-0 p-12 opacity-10 pointer-events-none -rotate-12 translate-x-10 -translate-y-10">
             <Home size={250} />
@@ -83,7 +102,7 @@ export default function MyRoomDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* 2. THÔNG TIN PHÒNG HIỆN TẠI (CHIẾM 2 CỘT) */}
+        {/* INFO CỘT TRÁI */}
         <div className="lg:col-span-2 space-y-8">
            {myContract ? (
              <div className="bg-white rounded-[3rem] border border-slate-100 p-10 shadow-xl shadow-slate-200/50 group">
@@ -144,28 +163,34 @@ export default function MyRoomDashboard() {
              </div>
            )}
 
-           {/* TIỆN ÍCH NHANH */}
+           {/* CHỈ SỐ ĐIỆN NƯỚC */}
            <div className="grid grid-cols-2 gap-6">
               <div className="bg-blue-600 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-blue-200 relative overflow-hidden group">
                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-125 transition-transform">
                     <Zap size={80} />
                  </div>
                  <Zap className="mb-6" size={32} />
-                 <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Chỉ số điện</p>
-                 <p className="text-3xl font-black italic tracking-tighter">--- <span className="text-sm font-medium">kWh</span></p>
+                 <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Chỉ số điện (Mới nhất)</p>
+                 <p className="text-4xl font-black italic tracking-tighter">
+                    {/* Hiển thị chỉ số điện */}
+                    {currentMetrics.electric > 0 ? currentMetrics.electric : '--'} <span className="text-sm font-medium not-italic opacity-70">kWh</span>
+                 </p>
               </div>
               <div className="bg-cyan-500 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-cyan-200 relative overflow-hidden group">
                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-125 transition-transform">
                     <Droplets size={80} />
                  </div>
                  <Droplets className="mb-6" size={32} />
-                 <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Chỉ số nước</p>
-                 <p className="text-3xl font-black italic tracking-tighter">--- <span className="text-sm font-medium">m³</span></p>
+                 <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Chỉ số nước (Mới nhất)</p>
+                 <p className="text-4xl font-black italic tracking-tighter">
+                    {/* Hiển thị chỉ số nước */}
+                    {currentMetrics.water > 0 ? currentMetrics.water : '--'} <span className="text-sm font-medium not-italic opacity-70">m³</span>
+                 </p>
               </div>
            </div>
         </div>
 
-        {/* 3. THÔNG BÁO THANH TOÁN (1 CỘT) */}
+        {/* HÓA ĐƠN CỘT PHẢI */}
         <div className="space-y-8">
            <div className="bg-white rounded-[3rem] border border-slate-100 p-10 shadow-xl shadow-slate-200/50 h-full flex flex-col">
               <h3 className="text-xs font-black text-slate-900 uppercase tracking-[0.2em] mb-8 flex items-center gap-3">

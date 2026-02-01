@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Branch, branchApi } from '@/services/branch.api';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2, MapPin, Building, Plus, Edit, Trash2, ShieldCheck, Home } from 'lucide-react';
-import BranchModal from '@/components/rooms/ranchModal';
-import Breadcrumbs from '@/components/shared/Breadcrumbs'; // Import Breadcrumbs
+import BranchModal from '@/components/rooms/ranchModal'; // Giữ nguyên đường dẫn của bạn (lưu ý typo 'ranchModal')
+import Breadcrumbs from '@/components/shared/Breadcrumbs';
 
 export default function DashboardBranchesPage() {
   const { user, isAdmin } = useAuth(); 
@@ -45,7 +45,10 @@ export default function DashboardBranchesPage() {
     if (user) fetchBranches(); 
   }, [user]);
 
-  const handleCreate = () => { setEditingBranch(null); setIsModalOpen(true); };
+  const handleCreate = () => { 
+    setEditingBranch(null); 
+    setIsModalOpen(true); 
+  };
   
   const handleEdit = (e: React.MouseEvent, branch: Branch) => {
     e.stopPropagation();
@@ -66,19 +69,35 @@ export default function DashboardBranchesPage() {
     }
   };
 
+  // 🔥 FIX QUAN TRỌNG: Lọc sạch dữ liệu trước khi gửi để tránh lỗi trùng ID
   const handleFormSubmit = async (data: any) => {
     try {
+      // 1. Tạo payload thủ công để đảm bảo KHÔNG dính trường 'id' rác từ form
+      const payload = {
+        name: data.name.trim(),
+        address: data.address.trim(),
+        manager: data.manager.trim(),
+        image: data.image || '', // Đảm bảo gửi image nếu có
+      };
+
       if (editingBranch) {
-        await branchApi.update(editingBranch.id, data);
+        // Update: Cần ID, lấy từ state editingBranch
+        await branchApi.update(editingBranch.id, payload);
         alert('Cập nhật hồ sơ khu trọ thành công!');
       } else {
-        await branchApi.create(data);
+        // Create: TUYỆT ĐỐI KHÔNG GỬI ID. Payload ở trên đã sạch.
+        const res = await branchApi.create(payload);
+        console.log("✅ Kết quả tạo chi nhánh:", res);
         alert('Khởi tạo khu trọ mới thành công!');
       }
+      
       setIsModalOpen(false);
-      fetchBranches(); 
-    } catch (error) {
-      alert('Lỗi khi đồng bộ dữ liệu chi nhánh.');
+      fetchBranches(); // Load lại dữ liệu từ server
+    } catch (error: any) {
+      // Xử lý hiển thị lỗi chi tiết từ Backend
+      const errorMsg = error.response?.data?.message || 'Lỗi khi đồng bộ dữ liệu chi nhánh.';
+      console.error("❌ Lỗi API:", error.response?.data);
+      alert(Array.isArray(errorMsg) ? errorMsg.join(', ') : errorMsg);
     }
   };
 

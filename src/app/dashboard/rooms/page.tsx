@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback, Suspense } from 'react'; // Thêm Suspense cho useSearchParams
+import { useEffect, useState, useMemo, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Room, roomApi } from '@/services/room.api';
 import { branchApi, Branch } from '@/services/branch.api';
 import RoomModal from '@/components/rooms/RoomModal';
-import Breadcrumbs from '@/components/shared/Breadcrumbs'; // Import Breadcrumbs
+import Breadcrumbs from '@/components/shared/Breadcrumbs'; 
 import { useAuth } from '@/context/AuthContext';
 import { 
-  Loader2, Search, Maximize, Plus, 
+  Loader2, Search, Maximize, Plus, Edit, // 👈 Đã thêm Edit
   MapPin, Trash2, Home, Building2, SlidersHorizontal, ShieldCheck
 } from 'lucide-react';
 
@@ -23,7 +23,12 @@ function RoomListContent() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentBranch, setCurrentBranch] = useState<Branch | null>(null);
+  
+  // State Modal & Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null); // 👈 Thêm state lưu phòng đang sửa
+
+  // Filter States
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('ALL'); 
   const [filterPrice, setFilterPrice] = useState('ALL');
@@ -56,8 +61,10 @@ function RoomListContent() {
     if (user) fetchData();
   }, [fetchData, user]);
 
+  // --- ACTIONS ---
+
   const handleDeleteRoom = async (e: React.MouseEvent, id: number, roomNumber: string) => {
-    e.stopPropagation();
+    e.stopPropagation(); // Ngăn click nhầm vào card
     if (confirm(`🗑️ Đưa phòng "${roomNumber}" vào thùng rác?`)) {
       try {
         await roomApi.delete(id); 
@@ -69,19 +76,40 @@ function RoomListContent() {
     }
   };
 
-  const handleCreateRoom = async (data: any) => {
+  // Mở Modal Tạo mới
+  const handleOpenCreate = () => {
+    setEditingRoom(null); // Reset edit state
+    setIsModalOpen(true);
+  };
+
+  // Mở Modal Sửa
+  const handleOpenEdit = (e: React.MouseEvent, room: Room) => {
+    e.stopPropagation(); // Ngăn chuyển trang
+    setEditingRoom(room);
+    setIsModalOpen(true);
+  };
+
+  // Xử lý Submit chung (Create + Update)
+  const handleFormSubmit = async (data: any) => {
     try {
-      const finalBranchId = branchId || user?.branchId;
-      if (!finalBranchId) {
-        alert("⚠️ Vui lòng chọn một chi nhánh trước khi tạo phòng!");
-        return;
+      if (editingRoom) {
+        // Logic Cập nhật
+        await roomApi.update(editingRoom.id, data);
+        alert('✅ Cập nhật phòng thành công!');
+      } else {
+        // Logic Tạo mới
+        const finalBranchId = branchId || user?.branchId;
+        if (!finalBranchId) {
+          alert("⚠️ Vui lòng chọn chi nhánh!");
+          return;
+        }
+        await roomApi.create({ ...data, branchId: finalBranchId });
+        alert('✅ Tạo phòng mới thành công!');
       }
-      await roomApi.create({ ...data, branchId: finalBranchId });
-      alert('✅ Tạo phòng thành công!');
       setIsModalOpen(false);
-      fetchData();
+      fetchData(); // Reload lại dữ liệu
     } catch (error) {
-      alert('❌ Lỗi tạo phòng.');
+      alert('❌ Lỗi xử lý dữ liệu.');
     }
   };
 
@@ -108,7 +136,7 @@ function RoomListContent() {
     <>
       <div className="p-8 space-y-8 selection:bg-blue-100">
         
-        {/* BREADCRUMBS ĐA CẤP */}
+        {/* Breadcrumbs */}
         <div className="inline-flex items-center px-4 py-2 bg-white rounded-xl border border-slate-100 shadow-sm">
           <Breadcrumbs 
             items={[
@@ -119,7 +147,7 @@ function RoomListContent() {
         </div>
 
         <div className="mb-10 space-y-8">
-          {/* HEADER SECTION */}
+          {/* Header */}
           <div className="flex flex-col md:flex-row justify-between md:items-end gap-6 border-b border-slate-100 pb-8">
             <div>
               <div className="flex items-center gap-2 text-blue-600 font-black text-[10px] uppercase tracking-[0.3em] mb-3">
@@ -137,7 +165,7 @@ function RoomListContent() {
             
             {isAdmin && (
               <button 
-                onClick={() => setIsModalOpen(true)}
+                onClick={handleOpenCreate} // Dùng hàm mới handleOpenCreate
                 className="bg-slate-900 text-white px-8 py-4 rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-3 shadow-xl shadow-slate-200 active:scale-95 group"
               >
                 <Plus size={20} className="group-hover:rotate-90 transition-transform" /> Khởi tạo phòng mới
@@ -145,7 +173,7 @@ function RoomListContent() {
             )}
           </div>
 
-          {/* TOOLBAR SEARCH & FILTERS */}
+          {/* Search Toolbar */}
           <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-wrap gap-6 items-center">
             <div className="relative flex-1 min-w-[300px] group">
               <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors" size={20} />
@@ -189,7 +217,8 @@ function RoomListContent() {
             {filteredRooms.map((room) => (
               <div 
                 key={room.id}
-                className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden group relative hover:shadow-2xl hover:shadow-blue-200/40 hover:-translate-y-2 transition-all duration-500"
+                onClick={() => router.push(`/dashboard/rooms/${room.id}`)} // 👈 THÊM: Click để xem chi tiết
+                className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden group relative hover:shadow-2xl hover:shadow-blue-200/40 hover:-translate-y-2 transition-all duration-500 cursor-pointer"
               >
                 <div className="h-56 bg-slate-100 relative overflow-hidden">
                   {room.image ? (
@@ -205,12 +234,23 @@ function RoomListContent() {
                   </div>
 
                   {isAdmin && (
-                    <button 
-                      onClick={(e) => handleDeleteRoom(e, room.id, room.roomNumber)}
-                      className="absolute top-5 right-5 p-3 bg-white/90 text-red-500 rounded-xl shadow-xl hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    <div className="absolute top-5 right-5 flex gap-2 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all">
+                      {/* 👇 NÚT SỬA NHANH */}
+                      <button 
+                        onClick={(e) => handleOpenEdit(e, room)}
+                        className="p-3 bg-white/90 text-blue-600 rounded-xl shadow-xl hover:bg-blue-600 hover:text-white transition-colors"
+                      >
+                        <Edit size={18} />
+                      </button>
+
+                      {/* NÚT XÓA */}
+                      <button 
+                        onClick={(e) => handleDeleteRoom(e, room.id, room.roomNumber)}
+                        className="p-3 bg-white/90 text-red-500 rounded-xl shadow-xl hover:bg-red-600 hover:text-white transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -237,19 +277,20 @@ function RoomListContent() {
         )}
       </div>
 
+      {/* MODAL (Dùng chung cho Tạo mới & Sửa) */}
       {(branchId || user?.branchId) && (
         <RoomModal 
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
-          onSubmit={handleCreateRoom}
+          onSubmit={handleFormSubmit}
           branchId={branchId || Number(user?.branchId)} 
+          initialData={editingRoom} // 👈 Truyền dữ liệu cũ để Form tự điền
         />
       )}
     </>
   );
 }
 
-// Bọc component trong Suspense vì dùng useSearchParams
 export default function AdminRoomListPage() {
   return (
     <Suspense fallback={<div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={40} /></div>}>
