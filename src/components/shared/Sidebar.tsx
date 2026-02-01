@@ -54,7 +54,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      {/* 2. MODE SWITCHER (LỐI THOÁT RA TRANG PUBLIC) */}
+      {/* 2. MODE SWITCHER */}
       <div className="px-6 pt-6">
         <Link href="/" className="flex items-center justify-between p-4 bg-blue-50/50 hover:bg-blue-600 hover:text-white rounded-2xl border border-blue-100 group transition-all duration-300">
            <div className="flex items-center gap-3">
@@ -69,7 +69,12 @@ export default function Sidebar() {
       <nav className="flex-1 p-6 space-y-2 overflow-y-auto scrollbar-hide">
         <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 px-5">Hệ thống quản trị</p>
         {visibleMenuItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          
+          // 👇 LOGIC ĐÃ SỬA LẠI Ở ĐÂY:
+          const isActive = item.href === '/dashboard'
+            ? pathname === '/dashboard' // Nếu là Dashboard tổng -> Phải khớp chính xác 100%
+            : pathname === item.href || pathname.startsWith(`${item.href}/`); // Các mục con -> Khớp chính xác HOẶC là trang con (ví dụ: contracts/1)
+
           return (
             <Link
               key={item.href} 

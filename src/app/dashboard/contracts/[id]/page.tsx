@@ -1,15 +1,16 @@
 'use client';
 
-import { useEffect, useState, useCallback, use } from 'react'; // Sử dụng 'use' để xử lý params chuẩn Next.js mới
+import { useEffect, useState, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
 import ContractModal from '@/components/contracts/ContractModal';
 import { Contract, contractApi, CreateContractDto } from '@/services/contract.api';
 import { branchApi, Branch } from '@/services/branch.api';
 import { useAuth } from '@/context/AuthContext';
-import Breadcrumbs from '@/components/shared/Breadcrumbs'; // Import Breadcrumbs
+import Breadcrumbs from '@/components/shared/Breadcrumbs';
 import { 
   Loader2, ArrowLeft, Edit,
-  FileText, Archive, ShieldCheck, Building2, User, Printer
+  FileText, Archive, ShieldCheck, Building2, User, Printer,
+  Paperclip, Maximize, ImageOff 
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -61,14 +62,18 @@ export default function AdminContractDetailPage({ params }: PageProps) {
 
   const handleUpdate = async (data: any) => {
     try {
-      const updatePayload: Partial<CreateContractDto> & { branchId?: number } = {
+      const updatePayload: any = { 
         roomId: Number(data.roomId),
         userId: Number(data.userId),
         deposit: Number(data.deposit),
         startDate: new Date(data.startDate).toISOString(),
         endDate: data.endDate ? new Date(data.endDate).toISOString() : undefined,
-        branchId: Number(contract?.branchId || data.branchId)
+        branchId: Number(contract?.branchId || data.branchId),
+        
+        // ✅ ĐÃ SỬA: Dùng đúng tên trường scanImage
+        scanImage: data.scanImage 
       };
+
       await contractApi.update(id, updatePayload);
       alert('✅ Cập nhật hồ sơ thành công!');
       await fetchDetail(); 
@@ -104,7 +109,7 @@ export default function AdminContractDetailPage({ params }: PageProps) {
   return (
     <div className="p-8 space-y-8 selection:bg-blue-100">
       
-      {/* TÍCH HỢP BREADCRUMBS 3 CẤP */}
+      {/* BREADCRUMBS */}
       <div className="inline-flex items-center px-4 py-2 bg-white rounded-xl border border-slate-100 shadow-sm">
         <Breadcrumbs 
           items={[
@@ -131,8 +136,8 @@ export default function AdminContractDetailPage({ params }: PageProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* VIEW HỢP ĐỒNG */}
-        <div className="lg:col-span-2">
+        {/* CỘT TRÁI: VIEW HỢP ĐỒNG */}
+        <div className="lg:col-span-2 space-y-8">
            <div className="bg-white rounded-[3rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-10 md:p-16 relative overflow-hidden">
               <div className="absolute top-0 right-0 p-10 opacity-[0.03] pointer-events-none -rotate-12 translate-x-10 -translate-y-10">
                 <FileText size={350} />
@@ -160,6 +165,7 @@ export default function AdminContractDetailPage({ params }: PageProps) {
                  </div>
               </div>
 
+              {/* Thông tin Cư dân & Phòng */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
                  <div className="bg-blue-50/50 p-8 rounded-[2rem] border border-blue-100 group hover:bg-blue-50 transition-all">
                     <h3 className="font-black text-blue-600 uppercase text-[10px] tracking-widest mb-6 flex items-center gap-2">
@@ -180,6 +186,7 @@ export default function AdminContractDetailPage({ params }: PageProps) {
                  </div>
               </div>
 
+              {/* Thông tin Tiền cọc & Ngày */}
               <div className="mt-12 pt-10 border-t border-slate-50 grid grid-cols-2 md:grid-cols-4 gap-6 relative z-10">
                  <div className="space-y-1">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Tiền đặt cọc</span>
@@ -198,10 +205,60 @@ export default function AdminContractDetailPage({ params }: PageProps) {
                     <p className="text-sm font-black text-slate-800 uppercase">{contract.endDate ? format(new Date(contract.endDate), 'dd/MM/yyyy') : '---'}</p>
                  </div>
               </div>
+
+              {/* --- KHU VỰC HIỂN THỊ HÌNH ẢNH HỢP ĐỒNG --- */}
+              <div className="mt-12 pt-10 border-t border-slate-50 relative z-10">
+                 <h3 className="font-black text-slate-400 uppercase text-[10px] tracking-[0.3em] mb-6 flex items-center gap-2">
+                    <Paperclip size={16} className="text-blue-500"/> Văn bản đính kèm (Scan)
+                 </h3>
+
+                 <div className="bg-slate-50 rounded-[2rem] border border-slate-100 overflow-hidden relative group min-h-[200px] flex items-center justify-center p-4">
+                    
+                    {/* ✅ HIỂN THỊ ẢNH TRỰC TIẾP */}
+                    {(contract as any).scanImage ? (
+                        <div className="w-full relative group/img">
+                            {/* Ảnh hiển thị lớn */}
+                            <img 
+                                src={(contract as any).scanImage} 
+                                alt="Contract Scan" 
+                                className="w-full h-auto object-contain rounded-xl shadow-md cursor-zoom-in"
+                                // Thêm sự kiện click để mở tab mới nếu muốn xem full HD
+                                onClick={() => window.open((contract as any).scanImage, '_blank')}
+                            />
+                            
+                            {/* Nút công cụ nhỏ góc phải (Optional) */}
+                            <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover/img:opacity-100 transition-opacity">
+                                <a 
+                                    href={(contract as any).scanImage} 
+                                    target="_blank" 
+                                    className="p-3 bg-white text-slate-900 rounded-xl shadow-lg hover:bg-blue-600 hover:text-white transition-all"
+                                    title="Mở tab mới"
+                                >
+                                    <Maximize size={16} />
+                                </a>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="py-16 text-center flex flex-col items-center gap-4 w-full">
+                            <div className="p-5 bg-white rounded-full text-slate-300 shadow-sm border border-slate-100">
+                                <ImageOff size={32} />
+                            </div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chưa cập nhật hình ảnh hợp đồng</p>
+                            {isAdmin && (
+                                <button onClick={() => setIsEditModalOpen(true)} className="px-6 py-3 bg-blue-50 text-blue-600 rounded-xl font-bold uppercase text-[9px] hover:bg-blue-600 hover:text-white transition-all">
+                                    Tải ảnh lên ngay
+                                </button>
+                            )}
+                        </div>
+                    )}
+                 </div>
+              </div>
+              {/* ----------------------------------------------- */}
+
            </div>
         </div>
 
-        {/* ADMIN CONTROLS */}
+        {/* CỘT PHẢI: ADMIN CONTROLS */}
         <div className="space-y-6">
           <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl shadow-slate-200 text-white relative overflow-hidden">
              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
@@ -217,7 +274,7 @@ export default function AdminContractDetailPage({ params }: PageProps) {
                       onClick={() => setIsEditModalOpen(true)} 
                       className="w-full py-5 bg-white/10 border border-white/10 rounded-2xl hover:bg-white hover:text-slate-900 font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-2 group"
                     >
-                      <Edit size={16} className="group-hover:rotate-12 transition-transform" /> Chỉnh sửa hồ sơ
+                      <Edit size={16} className="group-hover:rotate-12 transition-transform" /> Chỉnh sửa / Up ảnh
                     </button>
                     <button 
                       onClick={handleTerminateAndTrash} 
