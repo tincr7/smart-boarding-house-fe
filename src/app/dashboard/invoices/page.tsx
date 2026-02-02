@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation';
 import InvoiceModal from '@/components/invoices/InvoiceModal';
 import { Invoice, invoiceApi } from '@/services/invoice.api';
 import { branchApi, Branch } from '@/services/branch.api';
-import Breadcrumbs from '@/components/shared/Breadcrumbs'; // Import Breadcrumbs
+import Breadcrumbs from '@/components/shared/Breadcrumbs'; 
 import { 
-  Loader2, Plus, Send, CheckCircle, Trash2, 
-  MapPin, Building2, Search, Calendar, WalletCards
+  Loader2, Plus, CheckCircle, Trash2, 
+  Building2, Search, WalletCards
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -76,13 +76,7 @@ export default function AdminInvoicesPage() {
     }
   };
 
-  const handleSendNotification = async (e: any, id: number) => {
-    e.stopPropagation();
-    try {
-      await invoiceApi.sendNotification(id);
-      alert('Đã gửi mail nhắc nợ!');
-    } catch (error) { alert('Gửi mail thất bại.'); }
-  };
+  // ĐÃ XÓA HÀM GỬI MAIL NHẮC NỢ (handleSendNotification)
 
   const handleDelete = async (e: any, id: number) => {
     e.stopPropagation();
@@ -211,22 +205,14 @@ export default function AdminInvoicesPage() {
                     <td className="px-8 py-7 text-right pr-12" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-3">
                         {inv.status !== 'PAID' && (
-                          <>
-                            <button 
-                              onClick={(e) => handleSendNotification(e, inv.id)} 
-                              className="p-3 text-blue-500 hover:bg-blue-600 hover:text-white rounded-xl border border-blue-50 shadow-sm transition-all" 
-                              title="Gửi mail nhắc nợ"
-                            >
-                              <Send size={16} />
-                            </button>
-                            <button 
-                              onClick={(e) => handleConfirmPayment(e, inv.id)} 
-                              className="p-3 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl border border-emerald-50 shadow-sm transition-all" 
-                              title="Xác nhận đã thu tiền"
-                            >
-                              <CheckCircle size={16} />
-                            </button>
-                          </>
+                          // ĐÃ XÓA NÚT GỬI MAIL Ở ĐÂY
+                          <button 
+                            onClick={(e) => handleConfirmPayment(e, inv.id)} 
+                            className="p-3 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl border border-emerald-50 shadow-sm transition-all" 
+                            title="Xác nhận đã thu tiền"
+                          >
+                            <CheckCircle size={16} />
+                          </button>
                         )}
                         <button 
                           onClick={(e) => handleDelete(e, inv.id)} 

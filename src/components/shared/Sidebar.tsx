@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, Users, LogOut, FileText, 
   Receipt, ArchiveRestore, ShieldCheck, 
-  Building2, Globe, ChevronRight
+  Building2, Globe, ChevronRight, Wrench // 1. Import thêm icon Wrench
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -19,6 +19,8 @@ export default function Sidebar() {
     { icon: Users, label: 'Cư dân', href: '/dashboard/tenants', adminOnly: true },
     { icon: FileText, label: 'Hợp đồng', href: '/dashboard/contracts', adminOnly: false },
     { icon: Receipt, label: 'Hóa đơn', href: '/dashboard/invoices', adminOnly: false },
+    // 2. Thêm mục Sự cố vào đây
+    { icon: Wrench, label: 'Sự cố & Bảo trì', href: '/dashboard/incidents', adminOnly: false },
     { icon: ArchiveRestore, label: 'Thùng rác', href: '/dashboard/recycle-bin', adminOnly: true }, 
   ];
 
@@ -70,10 +72,9 @@ export default function Sidebar() {
         <p className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 px-5">Hệ thống quản trị</p>
         {visibleMenuItems.map((item) => {
           
-          // 👇 LOGIC ĐÃ SỬA LẠI Ở ĐÂY:
           const isActive = item.href === '/dashboard'
-            ? pathname === '/dashboard' // Nếu là Dashboard tổng -> Phải khớp chính xác 100%
-            : pathname === item.href || pathname.startsWith(`${item.href}/`); // Các mục con -> Khớp chính xác HOẶC là trang con (ví dụ: contracts/1)
+            ? pathname === '/dashboard' 
+            : pathname === item.href || pathname.startsWith(`${item.href}/`); 
 
           return (
             <Link

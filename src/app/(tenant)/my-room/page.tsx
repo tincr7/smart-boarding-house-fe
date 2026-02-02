@@ -49,7 +49,7 @@ export default function MyRoomDashboard() {
              // Sort giảm dần theo ID để lấy cái mới nhất
              const sortedInvoices = myInvoices.sort((a: any, b: any) => b.id - a.id);
              
-             // 🔥 FIX CHÍNH XÁC: Dùng tên trường từ JSON bạn gửi (newElectricity, newWater)
+             // Dùng tên trường chính xác từ API
              const latestInvoice: any = sortedInvoices[0];
              
              setCurrentMetrics({
@@ -163,29 +163,49 @@ export default function MyRoomDashboard() {
              </div>
            )}
 
-           {/* CHỈ SỐ ĐIỆN NƯỚC */}
+           {/* QUICK ACTIONS: BÁO HỎNG & CHỈ SỐ (ĐÃ CẬP NHẬT) */}
            <div className="grid grid-cols-2 gap-6">
-              <div className="bg-blue-600 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-blue-200 relative overflow-hidden group">
-                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-125 transition-transform">
+              {/* Nút Báo hỏng (Màu cam) */}
+              <Link href="/my-room/incidents" className="group relative overflow-hidden bg-orange-500 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-orange-200 hover:-translate-y-1 transition-all">
+                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-125 transition-transform rotate-12">
                     <Zap size={80} />
                  </div>
-                 <Zap className="mb-6" size={32} />
-                 <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Chỉ số điện (Mới nhất)</p>
-                 <p className="text-4xl font-black italic tracking-tighter">
-                    {/* Hiển thị chỉ số điện */}
-                    {currentMetrics.electric > 0 ? currentMetrics.electric : '--'} <span className="text-sm font-medium not-italic opacity-70">kWh</span>
-                 </p>
-              </div>
-              <div className="bg-cyan-500 rounded-[2.5rem] p-8 text-white shadow-2xl shadow-cyan-200 relative overflow-hidden group">
-                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-125 transition-transform">
+                 <div className="relative z-10 flex flex-col h-full justify-between">
+                    <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-4">
+                       <Zap size={24} />
+                    </div>
+                    <div>
+                       <p className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Cần hỗ trợ?</p>
+                       <p className="text-2xl font-black italic tracking-tighter leading-none">Báo hỏng ngay</p>
+                    </div>
+                 </div>
+              </Link>
+
+              {/* Ô Chỉ số điện nước gộp chung (Màu trắng) */}
+              <div className="group relative overflow-hidden bg-white border border-slate-100 rounded-[2.5rem] p-8 text-slate-900 shadow-xl shadow-slate-200/50">
+                 <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:scale-125 transition-transform -rotate-12">
                     <Droplets size={80} />
                  </div>
-                 <Droplets className="mb-6" size={32} />
-                 <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Chỉ số nước (Mới nhất)</p>
-                 <p className="text-4xl font-black italic tracking-tighter">
-                    {/* Hiển thị chỉ số nước */}
-                    {currentMetrics.water > 0 ? currentMetrics.water : '--'} <span className="text-sm font-medium not-italic opacity-70">m³</span>
-                 </p>
+                 <div className="relative z-10 flex flex-col h-full justify-between">
+                    <div className="flex justify-between items-start">
+                       <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400">
+                          <Droplets size={24} />
+                       </div>
+                       <div className="text-right">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Điện</p>
+                          <p className="text-lg font-black">{currentMetrics.electric || '--'}</p>
+                       </div>
+                    </div>
+                    <div className="flex justify-between items-end mt-4">
+                        <Link href="/my-room/invoices" className="text-[10px] font-black uppercase text-blue-600 tracking-widest hover:underline flex items-center gap-1">
+                           Chi tiết <ArrowRight size={12} />
+                        </Link>
+                        <div className="text-right">
+                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nước</p>
+                           <p className="text-lg font-black">{currentMetrics.water || '--'}</p>
+                        </div>
+                    </div>
+                 </div>
               </div>
            </div>
         </div>
